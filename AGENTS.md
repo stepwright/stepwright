@@ -61,3 +61,15 @@ TSan runs on native x86-64 CI runners.
 - Class layout must not depend on `NDEBUG`; debug-only checks use
   `STEPWRIGHT_DEBUG` and keep members unconditionally.
 - Every bug fix lands with a regression test.
+
+## Commits
+- One logical change per commit; every commit builds and passes its tests
+  (history must stay bisectable).
+- [Conventional Commits](https://www.conventionalcommits.org/) subjects:
+  `type(scope): summary` in the imperative mood, at most 72 characters, no
+  trailing period. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`,
+  `build`, `ci`, `style`, `chore`.
+- A body (wrapped at 72 columns) explains what changed and why; reference the
+  failure mode for fixes.
+- A new component lands with its tests in the same commit; follow-up test
+  suites, benchmarks and documentation may be separate commits.
