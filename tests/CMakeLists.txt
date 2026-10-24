@@ -20,7 +20,7 @@ endforeach()
 foreach(name source source_machine channel merge broadcast sources for_each chaos)
     stepwright_add_test(test_${name})
 endforeach()
-foreach(name static_lifetime thread_pool virtual_executor)
+foreach(name static_lifetime thread_pool virtual_executor scenarios)
     stepwright_add_test(test_${name})
 endforeach()
 # The registry test tracks tasks in its own executable only: every stepwright
