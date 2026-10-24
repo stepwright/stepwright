@@ -1,0 +1,24 @@
+# Cppcheck suppressions for stepwright.
+#
+# Format: <id>[:<file>[:<line>]]
+# See: https://cppcheck.sourceforge.io/manual.pdf section "Suppressions".
+
+# System headers we cannot fix (and Cppcheck has no DB for some macOS SDK paths).
+missingIncludeSystem
+
+# stepwright is a library; many functions are part of the public API and thus
+# unused from Cppcheck's local perspective.
+unusedFunction
+
+# Function/struct definitions in headers that are only consumed by template
+# instantiations look unused to Cppcheck.
+unusedStructMember
+
+# Third-party / generated trees
+*:*/_deps/*
+*:*/build/*
+*:*/build-*/*
+
+# Tests intentionally include moved-from objects, dead branches, etc.
+*:*/tests/*
+*:*/benchmarks/*
