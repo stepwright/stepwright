@@ -10,6 +10,6 @@ function(stepwright_add_test name)
 endfunction()
 
 stepwright_add_test(test_smoke)
-foreach(name error)
+foreach(name error cancel)
     stepwright_add_test(test_${name})
 endforeach()
