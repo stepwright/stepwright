@@ -25,5 +25,6 @@
 #include <stepwright/sync/shared_task.hpp>
 #include <stepwright/task.hpp>
 #include <stepwright/testing/manual_timer_service.hpp>
+#include <stepwright/thread_pool.hpp>
 #include <stepwright/timer.hpp>
 #include <stepwright/version.hpp>
