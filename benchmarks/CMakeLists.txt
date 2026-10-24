@@ -11,3 +11,4 @@ endfunction()
 
 stepwright_add_benchmark(bench_engine)
 stepwright_add_benchmark(bench_primitives)
+stepwright_add_benchmark(bench_streams)
