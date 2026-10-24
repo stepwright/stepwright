@@ -7,5 +7,6 @@
 #include <stepwright/config.hpp>
 #include <stepwright/error.hpp>
 #include <stepwright/executor.hpp>
+#include <stepwright/machine.hpp>
 #include <stepwright/task.hpp>
 #include <stepwright/version.hpp>
