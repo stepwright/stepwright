@@ -100,10 +100,10 @@ not to use C++20 coroutines.
 |---|---|
 | M0 | Build system, tooling, CI, license |
 | M0.5 | Linux dev container, `scripts/ci.sh`, CI workflows |
-| **M1** | **Core:** `error`, `completion`, `cancel`, `task`, `machine<D>`, `executor` with inline and manual executors, type names, logging shim, engine benchmarks |
-| M2 | Primitives: `event`, `shared_task`, `async_mutex`, `async_shared_mutex`, `when_all`, `when_any`, `timer_service`, `with_deadline`, `make_task`, `finally`, `delay`, `reschedule_on` |
+| M1 | Core: `error`, `completion`, `cancel`, `task`, `machine<D>`, `executor` with inline and manual executors, type names, logging shim, engine benchmarks |
+| M2 | Primitives: `event`, `shared_task`, `async_mutex`, `async_shared_mutex`, `when_all`, `when_any`, timer services (steady and manual), `delay`, `with_deadline`, `make_task`, `finally_task`, `reschedule` |
 | M3 | Streams: `source<T>` pull protocol, `source_machine`, `channel`, `merge`, `broadcast`, `empty`/`just`/`from_range`/`generate`/`interval` |
-| M4 | Runtime: `thread_pool`, `virtual_executor` and manual timers for deterministic tests, home-executor affinity, live task registry |
+| M4 | Runtime: `thread_pool`, `virtual_executor` for deterministic tests, live task registry |
 | M5 | Examples |
 | M6 | Benchmarks (single- and multi-threaded, fair baselines, documented method) |
 | M7 | Documentation, CMake install/export, packaging |
