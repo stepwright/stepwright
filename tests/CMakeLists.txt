@@ -17,7 +17,7 @@ foreach(name handoff event shared_task async_mutex async_shared_mutex when_all w
         delay_deadline adapters)
     stepwright_add_test(test_${name})
 endforeach()
-foreach(name source source_machine channel sources for_each)
+foreach(name source source_machine channel merge sources for_each)
     stepwright_add_test(test_${name})
 endforeach()
 stepwright_add_test(test_layout test_layout_ndebug.cpp)

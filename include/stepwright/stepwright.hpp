@@ -15,6 +15,7 @@
 #include <stepwright/machine.hpp>
 #include <stepwright/stream/channel.hpp>
 #include <stepwright/stream/for_each.hpp>
+#include <stepwright/stream/merge.hpp>
 #include <stepwright/stream/source.hpp>
 #include <stepwright/stream/source_machine.hpp>
 #include <stepwright/stream/sources.hpp>
