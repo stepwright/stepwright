@@ -12,7 +12,8 @@ struct version_info {
     int patch;
 };
 
-inline constexpr version_info version{STEPWRIGHT_VERSION_MAJOR, STEPWRIGHT_VERSION_MINOR,
-                                      STEPWRIGHT_VERSION_PATCH};
+inline constexpr version_info version{.major = STEPWRIGHT_VERSION_MAJOR,
+                                      .minor = STEPWRIGHT_VERSION_MINOR,
+                                      .patch = STEPWRIGHT_VERSION_PATCH};
 
 } // namespace stepwright
