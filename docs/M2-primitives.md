@@ -41,11 +41,13 @@ shared task done) are invoked directly; the M1 driver loop absorbs them.
 Corollary: a trampoline-delivered completion must not block waiting for work that
 is queued behind it on the same thread.
 
-## The waiter protocol (`detail/async_op.hpp`)
+## The waiter protocol (`detail/async_op.hpp`, `detail/wait_core.hpp`)
 
 Waiters (event/shared-task waiters, mutex lock operations, `delay`) derive from
-`detail::async_op` (task + embedded `work_item`, receiver, `cancel_registration`,
-result slot, one atomic `phase` byte). A waiter is *published* (linked into the
+`detail::async_op`, a task holding a `detail::wait_core` (embedded `work_item`,
+receiver, `cancel_registration`, result slot, one atomic `phase` byte). Since M3
+the protocol lives in `wait_core` so that stream sources can host their
+consumer's readiness wait without being tasks themselves; sizes are unchanged. A waiter is *published* (linked into the
 primitive under its lock, or scheduled on a timer) before its cancellation
 registration is armed, because arming may run the callback inline and the
 callback must find the node. Publication, however, lets a grant race with
@@ -268,7 +270,9 @@ posts its embedded `work_item` to an executor and completes from there.
 
 ## Resettable cancel source (minimal M1 addition)
 
-`cancel_source::reset()` clears the `requested` flag of the existing state under
+Since M3 this is internal: `reset()` is private and reached only through
+`detail::cancel_source_access::reset`, so cancellation stays one-way for users.
+`reset()` clears the `requested` flag of the existing state under
 its mutex, asserting that no registration is armed. Combinators (`when_all`,
 `when_any`, `with_deadline`, `shared_task`) call it at the start of a run whose
 previous run requested cancellation. Without it, every `when_any` run (whose
