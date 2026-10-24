@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BUILD_DIR = REPO_ROOT / "build" / "coverage"
+BUILD_DIR = Path(os.environ.get("STEPWRIGHT_BUILD_ROOT", str(REPO_ROOT / "build"))) / "coverage"
 RAW_INFO = BUILD_DIR / "coverage.raw.info"
 INFO = BUILD_DIR / "coverage.info"
 HTML_DIR = BUILD_DIR / "coverage_html"
@@ -67,7 +67,7 @@ EXTRACT_PATTERNS = [
 # NOTE: Compatible with lcov 1.14+ (Ubuntu 20.04/22.04/24.04).
 # Excludes lcov 2.x-only error types (range, empty, utility, unsupported, category)
 # to maintain compatibility with GitHub Actions ubuntu-latest runners.
-LCOV_IGNORE = "inconsistent,format,unused,source,mismatch,negative,corrupt"
+LCOV_IGNORE = "inconsistent,format,unused,source,mismatch,negative,corrupt,empty"
 
 
 class CoverageError(RuntimeError):
@@ -303,9 +303,9 @@ def configure(extra_cmake_args: Iterable[str]) -> None:
         "-B",
         str(BUILD_DIR),
         "-DCMAKE_BUILD_TYPE=Debug",
-        "-DENABLE_COVERAGE=ON",
+        "-DCODE_INSTRUMENTATION=COVERAGE",
         "-DSTEPWRIGHT_BUILD_BENCHMARKS=OFF",
-        "-DFETCHCONTENT_QUIET=OFF",
+        "-DFETCHCONTENT_QUIET=ON",
     ]
     cmd.extend(extra_cmake_args)
     run(cmd)
