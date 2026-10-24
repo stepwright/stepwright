@@ -51,7 +51,7 @@ private:
         if (!source_) {
             source_.emplace();
         } else if (source_->cancel_requested()) {
-            source_->reset();
+            detail::cancel_source_access::reset(*source_);
         }
         inner_result_ = {};
         outcome_.store(undecided, std::memory_order_relaxed);

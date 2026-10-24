@@ -11,7 +11,9 @@
 
 namespace stepwright {
 class cancel_registration;
+class cancel_source;
 namespace detail {
+struct cancel_source_access;
 struct cancel_invocation {
     cancel_registration* node;
     std::thread::id thread = std::this_thread::get_id();
@@ -213,11 +215,16 @@ public:
         }
         return true;
     }
-    /// Clear a previous request so the same state can serve another run without
-    /// allocation. Precondition (asserted in part): no registration is armed on the
-    /// state, no request_cancel() is in progress, and every task that observed a
-    /// token from this source has completed. Stale token copies observe the reset.
-    /// Not thread-safe with other uses of this state; moved-from sources do nothing.
+
+private:
+    // Cancellation is one-way for users. Only the library's own combinators, which
+    // own their sources, may rearm one (through detail::cancel_source_access).
+    friend struct detail::cancel_source_access;
+    // Clear a previous request so the same state can serve another run without
+    // allocation. Precondition (asserted in part): no registration is armed on the
+    // state, no request_cancel() is in progress, and every task that observed a
+    // token from this source has completed. Stale token copies observe the reset.
+    // Not thread-safe with other uses of this state; moved-from sources do nothing.
     void reset() noexcept {
         auto* state = token_.state_;
         if (!state) {
@@ -228,9 +235,16 @@ public:
         state->requested.store(false, std::memory_order_seq_cst);
     }
 
-private:
     cancel_token token_;
 };
+
+namespace detail {
+// Internal route for combinators that own a cancel_source and reuse it across
+// runs (see cancel_source::reset). Not part of the public API.
+struct cancel_source_access {
+    static void reset(cancel_source& source) noexcept { source.reset(); }
+};
+} // namespace detail
 
 template <class F>
 /// RAII, allocation-free registration owning its callable. F() runs at most once

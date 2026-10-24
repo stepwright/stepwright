@@ -13,6 +13,22 @@
 #include <thread>
 #include <vector>
 
+namespace {
+template <class S>
+concept publicly_resettable = requires(S& source) { source.reset(); };
+// Rearming is internal to the library's combinators (spec M3 §0.1).
+void reset(stepwright::cancel_source& source) noexcept {
+    stepwright::detail::cancel_source_access::reset(source);
+}
+} // namespace
+
+TEST(cancel, regression_cancellation_is_one_way_publicly) {
+    static_assert(!publicly_resettable<stepwright::cancel_source>);
+    stepwright::cancel_source source;
+    EXPECT_TRUE(source.request_cancel());
+    EXPECT_FALSE(source.request_cancel());
+    EXPECT_TRUE(source.cancel_requested());
+}
 TEST(cancel, before_after_and_deregister) {
     stepwright::cancel_source source;
     EXPECT_TRUE(source.token().can_be_cancelled());
@@ -205,7 +221,7 @@ TEST(cancel, reset_allows_reuse_without_allocation) {
     }
     EXPECT_EQ(calls, 1);
     EXPECT_TRUE(stale.cancel_requested());
-    source.reset();
+    reset(source);
     EXPECT_FALSE(source.cancel_requested());
     EXPECT_FALSE(stale.cancel_requested()); // tokens share the reset state
     stepwright::cancel_callback again(source.token(), [&] { ++calls; });
@@ -214,7 +230,7 @@ TEST(cancel, reset_allows_reuse_without_allocation) {
     EXPECT_EQ(calls, 2);
     stepwright::cancel_source moved = std::move(source);
     // NOLINTNEXTLINE(bugprone-use-after-move): reset of a moved-from source is a no-op.
-    source.reset();
+    reset(source);
     EXPECT_TRUE(moved.cancel_requested());
 }
 TEST(cancel, regression_reset_with_armed_registration_asserts) {
@@ -223,7 +239,7 @@ TEST(cancel, regression_reset_with_armed_registration_asserts) {
         {
             stepwright::cancel_source source;
             stepwright::cancel_callback callback(source.token(), [] {});
-            source.reset();
+            reset(source);
         },
         "cancel_source reset with armed registrations");
 #else

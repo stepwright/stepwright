@@ -110,7 +110,7 @@ private:
                 if (!owner.source_) {
                     owner.source_.emplace();
                 } else if (owner.source_->cancel_requested()) {
-                    owner.source_->reset();
+                    detail::cancel_source_access::reset(*owner.source_);
                 }
                 owner.state_.store(shared_task::state_running, std::memory_order_relaxed);
                 start_inner = true;

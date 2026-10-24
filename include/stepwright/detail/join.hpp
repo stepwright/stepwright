@@ -77,7 +77,7 @@ private:
         }
         receiver_ = done;
         if (source_.cancel_requested()) {
-            source_.reset();
+            detail::cancel_source_access::reset(source_);
         }
         result_ = {};
         winner_ = npos;
