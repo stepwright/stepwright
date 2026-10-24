@@ -39,6 +39,11 @@ Container build trees live in the Docker volume `stepwright-build-<platform>`
 (`make docker-clean` deletes it); native build trees live in `build/`.
 On macOS, CMake may need `export PATH="/opt/homebrew/bin:$PATH"`.
 
+`PLATFORM=linux/amd64` on Apple silicon runs under emulation: ordinary
+builds, tests, ASan and UBSan work, but ThreadSanitizer cannot start there
+(the emulator rejects the address-randomization change TSan needs). x86-64
+TSan runs on native x86-64 CI runners.
+
 ## Independent-implementation rules (mandatory)
 - Implement from the specifications and public documentation only. Do not read,
   copy, paraphrase or consult any proprietary or third-party codebase whose
