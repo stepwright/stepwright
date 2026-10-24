@@ -31,8 +31,10 @@ endif()
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -D_FORTIFY_SOURCE=2")
 string(APPEND CMAKE_CXX_FLAGS_DEBUG " -fstack-protector-all")
 
-# GNU is Linux-only in our matrix; apply ELF link hardening unconditionally.
-string(APPEND CMAKE_EXE_LINKER_FLAGS " -pie -Wl,-z,relro,-z,now")
+# ELF link hardening (Apple's ld64 does not understand -z).
+if(NOT APPLE)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -pie -Wl,-z,relro,-z,now")
+endif()
 
 # Opt-in: tune for the build machine (benchmarks only; binaries become
 # non-portable).
