@@ -1,0 +1,56 @@
+# stepwright formatting rules. Base: LLVM style, with these project choices.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 100
+UseTab: Never
+
+BreakBeforeBraces: Attach
+NamespaceIndentation: None
+FixNamespaceComments: true
+CompactNamespaces: false
+
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+DerivePointerAlignment: false
+
+AccessModifierOffset: -4
+IndentCaseLabels: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortEnumsOnASingleLine: false
+
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: CurrentLine
+BinPackArguments: true
+BinPackParameters: true
+
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+SpaceAfterTemplateKeyword: true
+SpaceBeforeParens: ControlStatements
+Cpp11BracedListStyle: true
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Project headers first
+  - Regex: '^<stepwright/'
+    Priority: 1
+  # Third-party test/bench frameworks
+  - Regex: '^<(gtest|gmock|benchmark|spdlog|fmt)/'
+    Priority: 2
+  # Standard library and everything else
+  - Regex: '.*'
+    Priority: 3
