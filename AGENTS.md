@@ -4,7 +4,8 @@
 stepwright is a header-only C++20 library for writing asynchronous operations as
 explicit state machines: each step is a member function that returns the next
 transition (`done`, `fail`, `then`, `after`, `forward`, `park`, `defer`).
-See `docs/design.md` (engine, threading, cancellation) and `docs/guide.md`.
+Start with `docs/overview.md` (purpose, design principles, architecture,
+roadmap). Milestone specifications live in `.claude/plans/spec-*.md`.
 
 ## Supported platforms
 macOS (AppleClang, native) and Linux (GCC 14, Clang 20 with libstdc++ or
