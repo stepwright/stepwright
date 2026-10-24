@@ -98,6 +98,22 @@ step, and cannot resume the machine before its queued work item executes.
 An immediately executing executor signals the existing driver instead of
 recursively entering it.
 
+*M4 amendment.* Posting while still owning `running` is right only when the
+deferring thread belongs to the home executor (`running_in_this_thread()`): an
+item run inline, or by another worker of the same executor, signals the driver,
+which continues on an executor thread. From any other thread a multi-threaded
+executor (the M4 `thread_pool`) could run the item before the driver suspended;
+the item then only signalled readiness and the step continued on the *deferring*
+thread, against "continue on the home executor". Off the executor the driver now
+releases `running` (with `deferring` set) *before* posting, so whichever executor
+thread runs the item takes ownership and runs the step; after the post nothing
+touches the machine. Wakes still buffer (`parked` is clear), and the inline path,
+hence the constant-stack deferral chains, is unchanged. Regression:
+`machine.regression_defer_runs_on_the_executor_when_it_runs_first` (an executor
+whose `post()` runs the item on its own thread before returning). `source_machine`
+uses the same rule. Executors that may run an item inside `post()` must report
+`running_in_this_thread()` for that thread (documented on `executor`).
+
 ## Cancellation
 
 Shared state owns a mutex, condition variable and doubly linked intrusive list.

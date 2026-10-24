@@ -381,6 +381,21 @@ private:
                     STEPWRIGHT_ASSERT(home_, "defer requires bind");
                     work_item::run = value.resume;
                     state_.fetch_or(deferring, std::memory_order_acq_rel);
+                    // Off the home executor, hand the machine over *before* posting:
+                    // whichever executor thread runs the item owns the next step, so
+                    // it runs there even if the item runs before this thread could
+                    // suspend. Nothing touches *this after the post (the machine may
+                    // already have completed). On an executor thread (an immediate
+                    // executor, or a worker) keep posting first: an item run inline
+                    // only signals this loop, which keeps deferral chains flat.
+                    if (executor& home = *home_; !home.running_in_this_thread()) {
+                        if constexpr (Sync) {
+                            owned_ = false;
+                        }
+                        static_cast<void>(suspend(deferred_ready)); // not posted: not ready
+                        home.post(static_cast<work_item&>(*this));
+                        return outcome::suspended;
+                    }
                     home_->post(static_cast<work_item&>(*this));
                     if (suspend(deferred_ready)) {
                         if constexpr (Sync) {

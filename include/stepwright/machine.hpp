@@ -121,9 +121,11 @@ protected:
         return transition<Fn>(step::kind::park);
     }
     template <auto Fn>
-    /// Post the next step to the previously bound home executor (required).
-    /// Fn's optional error argument is empty; pending wakes stay for a later park.
-    /// An immediate executor still uses the loop, never recursive continuation.
+    /// Post the next step to the previously bound home executor (required); Fn
+    /// runs on a thread of that executor, even when a multi-threaded executor runs
+    /// the item before this step has returned. Fn's optional error argument is
+    /// empty; pending wakes stay for a later park. An immediate executor still uses
+    /// the loop, never recursive continuation.
     static step defer() noexcept {
         auto value = transition<Fn>(step::kind::defer);
         value.resume = &deferred<Fn>;
@@ -386,6 +388,18 @@ private:
                     STEPWRIGHT_ASSERT(home_, "defer requires bind");
                     work_item::run = value.resume;
                     state_.fetch_or(deferring, std::memory_order_acq_rel);
+                    // Off the home executor, hand the machine over *before* posting:
+                    // whichever executor thread runs the item owns the next step, so
+                    // it runs there even if the item runs before this thread could
+                    // suspend. Nothing touches *this after the post (the machine may
+                    // already have completed). On an executor thread (an immediate
+                    // executor, or a worker) keep posting first: an item run inline
+                    // only signals this loop, which keeps deferral chains flat.
+                    if (executor& home = *home_; !home.running_in_this_thread()) {
+                        static_cast<void>(suspend(deferred_ready)); // not posted: not ready
+                        home.post(static_cast<work_item&>(*this));
+                        return;
+                    }
                     home_->post(static_cast<work_item&>(*this));
                     if (suspend(deferred_ready)) {
                         return;

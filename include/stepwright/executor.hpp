@@ -27,6 +27,8 @@ public:
     /// Queue/run a stable, nonqueued node without allocation; it must outlive run.
     virtual void post(work_item& item) noexcept = 0;
     /// Query whether this thread is executing here; conservative default is false.
+    /// An executor that may run an item inside post() must return true on that
+    /// thread (machines rely on it to keep deferral chains flat).
     virtual bool running_in_this_thread() const noexcept { return false; }
     template <class F>
         requires(!std::is_base_of_v<work_item, std::remove_cvref_t<F>>)
