@@ -13,6 +13,7 @@
 #include <stepwright/error.hpp>
 #include <stepwright/executor.hpp>
 #include <stepwright/machine.hpp>
+#include <stepwright/stream/broadcast.hpp>
 #include <stepwright/stream/channel.hpp>
 #include <stepwright/stream/for_each.hpp>
 #include <stepwright/stream/merge.hpp>
