@@ -1,0 +1,8 @@
+InheritParentConfig: true
+# Test steps intentionally exercise the exact non-static, non-const member
+# signatures accepted by the API; replacement allocation overloads use unnamed
+# ABI-mandated parameters. Keep all correctness checks from the parent.
+Checks: >
+  -readability-convert-member-functions-to-static,
+  -readability-make-member-function-const,
+  -readability-named-parameter
