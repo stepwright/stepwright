@@ -1,0 +1,12 @@
+# Files / globs ignored by helper scripts that drive clang-tidy.
+#
+# Note: clang-tidy itself does not consume this file; tooling (run-clang-tidy,
+# scripts/format-code.sh, CI workflows) reads it to skip generated and
+# third-party sources. Use shell-style globs.
+
+# FetchContent dependencies (googletest, spdlog, google benchmark, ...)
+*/_deps/*
+
+# Build trees
+*/build/*
+*/build-*/*
