@@ -12,3 +12,6 @@ m2_layout ndebug_m2_layout() {
 m3_layout ndebug_m3_layout() {
     return measure_m3_layout();
 }
+m4_layout ndebug_m4_layout() {
+    return measure_m4_layout();
+}

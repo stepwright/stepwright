@@ -91,3 +91,17 @@ inline m3_layout measure_m3_layout() {
     return m3_layout{STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
 }
 m3_layout ndebug_m3_layout();
+
+// Every public M4 type.
+#define STEPWRIGHT_M4_LAYOUT_TYPES(X)                                                              \
+    X(stepwright::thread_pool)                                                                     \
+    X(stepwright::testing::virtual_executor)                                                       \
+    X(stepwright::testing::schedule)
+
+inline constexpr std::size_t m4_layout_count =
+    0 STEPWRIGHT_M4_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_COUNT);
+using m4_layout = std::array<std::pair<std::size_t, std::size_t>, m4_layout_count>;
+inline m4_layout measure_m4_layout() {
+    return m4_layout{STEPWRIGHT_M4_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
+}
+m4_layout ndebug_m4_layout();
