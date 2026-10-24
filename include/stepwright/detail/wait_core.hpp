@@ -4,9 +4,12 @@
 #include <stepwright/completion.hpp>
 #include <stepwright/detail/handoff.hpp>
 
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <new>
 #include <utility>
 
 namespace stepwright::detail {
@@ -102,8 +105,15 @@ private:
 /// Shared errc::cancelled value for cancellation paths that must not allocate in
 /// steady state (stream readiness waits). Copies share one payload; callers that
 /// add context clone it first (error's copy-on-write), so it is never mutated.
+/// Immortal: the handle is constructed once in static storage and never destroyed,
+/// so threads still running during static destruction (detached threads, timer
+/// services owned by other statics) can keep copying it. Its payload stays
+/// reachable through that storage, so leak checkers do not report it.
 inline const error& cancelled_error() noexcept {
-    static const error value = error::make(errc::cancelled);
-    return value;
+    alignas(error) static std::array<std::byte, sizeof(error)> storage;
+    // A trivially destructible pointer: no exit-time destructor is registered.
+    static const error* const value =
+        ::new (static_cast<void*>(storage.data())) error(error::make(errc::cancelled));
+    return *value;
 }
 } // namespace stepwright::detail
