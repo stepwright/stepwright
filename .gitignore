@@ -9,7 +9,7 @@ build/
 .cursor/
 cmake-build-*/
 compile_commands.json
-Testing/
+/Testing/
 
 # Legacy top-level build flavors (now nested under build/)
 build-*/
