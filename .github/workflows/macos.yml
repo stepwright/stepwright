@@ -1,0 +1,29 @@
+name: macos
+
+# macOS cannot run in a container, so these jobs use the runner's native
+# AppleClang toolchain through the same scripts/ci.sh entry point.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: macos / AppleClang / ${{ matrix.task }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [test, debug, asan, tsan, ubsan]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: brew install ninja
+      - name: Run ${{ matrix.task }}
+        run: bash scripts/ci.sh ${{ matrix.task }}

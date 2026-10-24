@@ -1,0 +1,52 @@
+name: quality
+
+# Formatting, static analysis and coverage, all inside the pinned dev
+# container so tool versions match `make <task>` locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [format-check, forbidden, tidy, cppcheck]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dev image
+        run: make docker-image
+      - name: Run ${{ matrix.task }}
+        run: make docker-${{ matrix.task }}
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dev image
+        run: make docker-image
+      - name: Generate coverage
+        run: make docker-coverage
+      - name: Export report from the build volume
+        if: always()
+        run: |
+          mkdir -p coverage-report
+          docker run --rm -v stepwright-build-host:/work/build -v "$PWD/coverage-report":/out \
+            busybox sh -c 'cp -r /work/build/coverage/coverage_html /work/build/coverage/coverage.info /out/ 2>/dev/null || true'
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage-report/
+          retention-days: 14

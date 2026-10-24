@@ -1,0 +1,54 @@
+name: linux
+
+# Linux builds run inside the pinned dev container (docker/Dockerfile), the
+# same environment contributors use locally via `make docker-<task>`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.arch }} / ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
+        compiler: [gcc, clang, clang-libcxx]
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dev image
+        run: make docker-image
+      - name: Build and test
+        env:
+          COMPILER: ${{ matrix.compiler }}
+          BUILD_TYPE: ${{ matrix.build_type }}
+        run: make docker-test
+
+  sanitizers:
+    name: ${{ matrix.arch }} / ${{ matrix.sanitizer }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
+        sanitizer: [asan, tsan, ubsan, leak]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reduce ASLR entropy for ThreadSanitizer
+        if: matrix.sanitizer == 'tsan'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Build dev image
+        run: make docker-image
+      - name: Build and test with ${{ matrix.sanitizer }}
+        env:
+          COMPILER: clang
+        run: make docker-${{ matrix.sanitizer }}
