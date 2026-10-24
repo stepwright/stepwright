@@ -22,7 +22,9 @@ public:
     /// Start only while idle with a nonempty target. Completion occurs exactly
     /// once, before return or later on any thread, and may destroy this task.
     /// May restart from/after completion; concurrent starts are not supported.
-    void start(completion done, cancel_token token = {}) {
+    /// Always inlined: a two-line forwarder on every driver step, whose inlining
+    /// GCC otherwise drops in larger translation units (see docs/M2-primitives.md).
+    STEPWRIGHT_ALWAYS_INLINE void start(completion done, cancel_token token = {}) {
         STEPWRIGHT_ASSERT(done, "start requires a completion");
         on_start(done, std::move(token));
     }
