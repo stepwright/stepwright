@@ -195,3 +195,38 @@ TEST(cancel, regression_immediate_callback_destroys_registration_and_source) {
     EXPECT_FALSE(source);
     EXPECT_FALSE(registration);
 }
+TEST(cancel, reset_allows_reuse_without_allocation) {
+    stepwright::cancel_source source;
+    auto stale = source.token();
+    int calls = 0;
+    {
+        stepwright::cancel_callback callback(source.token(), [&] { ++calls; });
+        EXPECT_TRUE(source.request_cancel());
+    }
+    EXPECT_EQ(calls, 1);
+    EXPECT_TRUE(stale.cancel_requested());
+    source.reset();
+    EXPECT_FALSE(source.cancel_requested());
+    EXPECT_FALSE(stale.cancel_requested()); // tokens share the reset state
+    stepwright::cancel_callback again(source.token(), [&] { ++calls; });
+    EXPECT_EQ(calls, 1);
+    EXPECT_TRUE(source.request_cancel());
+    EXPECT_EQ(calls, 2);
+    stepwright::cancel_source moved = std::move(source);
+    // NOLINTNEXTLINE(bugprone-use-after-move): reset of a moved-from source is a no-op.
+    source.reset();
+    EXPECT_TRUE(moved.cancel_requested());
+}
+TEST(cancel, regression_reset_with_armed_registration_asserts) {
+#if STEPWRIGHT_DEBUG
+    EXPECT_DEATH(
+        {
+            stepwright::cancel_source source;
+            stepwright::cancel_callback callback(source.token(), [] {});
+            source.reset();
+        },
+        "cancel_source reset with armed registrations");
+#else
+    GTEST_SKIP() << "STEPWRIGHT_DEBUG is disabled";
+#endif
+}

@@ -213,6 +213,20 @@ public:
         }
         return true;
     }
+    /// Clear a previous request so the same state can serve another run without
+    /// allocation. Precondition (asserted in part): no registration is armed on the
+    /// state, no request_cancel() is in progress, and every task that observed a
+    /// token from this source has completed. Stale token copies observe the reset.
+    /// Not thread-safe with other uses of this state; moved-from sources do nothing.
+    void reset() noexcept {
+        auto* state = token_.state_;
+        if (!state) {
+            return;
+        }
+        const std::lock_guard lock(state->mutex);
+        STEPWRIGHT_ASSERT(state->head == nullptr, "cancel_source reset with armed registrations");
+        state->requested.store(false, std::memory_order_seq_cst);
+    }
 
 private:
     cancel_token token_;
