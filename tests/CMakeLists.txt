@@ -1,11 +1,5 @@
-include(FetchContent)
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.15.2
-)
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+include(${PROJECT_SOURCE_DIR}/cmake/Dependencies.cmake)
+stepwright_fetch_googletest()
 
 # stepwright_add_test(<name> [extra sources...])
 function(stepwright_add_test name)

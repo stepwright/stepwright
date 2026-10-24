@@ -54,15 +54,8 @@ find_package(Threads REQUIRED)
 target_link_libraries(stepwright INTERFACE Threads::Threads)
 
 if(STEPWRIGHT_ENABLE_LOGGING)
-    find_package(spdlog QUIET)
-    if(NOT spdlog_FOUND)
-        include(FetchContent)
-        FetchContent_Declare(spdlog
-            GIT_REPOSITORY https://github.com/gabime/spdlog.git
-            GIT_TAG v1.14.1)
-        set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-        FetchContent_MakeAvailable(spdlog)
-    endif()
+    include(cmake/Dependencies.cmake)
+    stepwright_fetch_spdlog()
     target_link_libraries(stepwright INTERFACE spdlog::spdlog)
     target_compile_definitions(stepwright INTERFACE
         STEPWRIGHT_ENABLE_LOGGING
