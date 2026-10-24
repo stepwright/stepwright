@@ -2,8 +2,10 @@
 
 // Umbrella header: include this to get the whole public stepwright API.
 
+#include <stepwright/algo/delay.hpp>
 #include <stepwright/algo/when_all.hpp>
 #include <stepwright/algo/when_any.hpp>
+#include <stepwright/algo/with_deadline.hpp>
 #include <stepwright/cancel.hpp>
 #include <stepwright/completion.hpp>
 #include <stepwright/config.hpp>
