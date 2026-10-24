@@ -14,4 +14,6 @@
 #include <stepwright/sync/event.hpp>
 #include <stepwright/sync/shared_task.hpp>
 #include <stepwright/task.hpp>
+#include <stepwright/testing/manual_timer_service.hpp>
+#include <stepwright/timer.hpp>
 #include <stepwright/version.hpp>
