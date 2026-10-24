@@ -19,9 +19,11 @@ EXAMPLE    ?=
 BENCH_ARGS ?=
 CMAKE_ARGS ?=
 JOBS       ?=
+STEPWRIGHT_STRESS_SCALE ?= 1
 
 CI := bash scripts/ci.sh
 export COMPILER BUILD_TYPE EXAMPLE BENCH_ARGS CMAKE_ARGS JOBS
+export STEPWRIGHT_STRESS_SCALE
 
 # ---------------------------------------------------------------------------
 # Docker plumbing
@@ -41,6 +43,7 @@ DOCKER_RUN = $(DOCKER) run --rm $(TTY_FLAG) $(USER_FLAG) \
 	-v $(BUILD_VOLUME):/work/build \
 	-e BUILD_ROOT=/work/build -e HOME=/tmp \
 	-e COMPILER -e BUILD_TYPE -e EXAMPLE -e BENCH_ARGS -e CMAKE_ARGS -e JOBS \
+	-e STEPWRIGHT_STRESS_SCALE \
 	$(IMAGE)
 
 TASKS := build test debug asan tsan ubsan bench run check
