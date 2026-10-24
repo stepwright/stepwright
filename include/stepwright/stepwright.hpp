@@ -8,6 +8,7 @@
 #include <stepwright/error.hpp>
 #include <stepwright/executor.hpp>
 #include <stepwright/machine.hpp>
+#include <stepwright/sync/async_mutex.hpp>
 #include <stepwright/sync/event.hpp>
 #include <stepwright/sync/shared_task.hpp>
 #include <stepwright/task.hpp>
