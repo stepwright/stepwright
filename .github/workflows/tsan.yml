@@ -1,0 +1,35 @@
+name: tsan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tsan:
+    name: ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: bash scripts/install_toolchain.sh build sanitizers
+
+      - name: Build + run with TSan
+        env:
+          CC: clang
+          CXX: clang++
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: make tsan CMAKE_FLAGS="-DFETCHCONTENT_QUIET=ON"
+
+      - name: Upload sanitizer logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-logs
+          path: build/tsan/Testing/
+          retention-days: 7

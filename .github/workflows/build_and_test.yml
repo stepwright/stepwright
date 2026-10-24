@@ -1,0 +1,63 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }} / ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+        exclude:
+          # macOS-latest does not ship a usable gcc by default; AppleClang
+          # already covers Clang on macOS.
+          - os: macos-latest
+            compiler: gcc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: bash scripts/install_toolchain.sh build coverage
+
+      - name: Select compiler
+        shell: bash
+        run: |
+          if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
+            echo "CC=gcc"  >> "$GITHUB_ENV"
+            echo "CXX=g++" >> "$GITHUB_ENV"
+          else
+            echo "CC=clang"   >> "$GITHUB_ENV"
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: |
+          cmake -S . -B build/ci \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DFETCHCONTENT_QUIET=ON
+
+      - name: Build
+        run: cmake --build build/ci -j
+
+      - name: Test
+        run: ctest --test-dir build/ci --output-on-failure --timeout 60
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build_type }}
+          path: build/ci/Testing/
+          retention-days: 7
