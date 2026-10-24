@@ -78,7 +78,13 @@ fi
 # configure <variant> <build_type> [cmake args...]  -> sets BUILD_DIR
 configure() {
     local variant="$1" build_type="$2"; shift 2
-    BUILD_DIR="${BUILD_ROOT}/${COMPILER}-${variant}"
+    # Different CMAKE_ARGS (e.g. -DSTEPWRIGHT_TRACK_TASKS=ON) must never share a build
+    # tree: CMake caches options, so a later run without them would silently reuse them.
+    local suffix=""
+    if [[ -n "${CMAKE_ARGS}" ]]; then
+        suffix="-$(printf '%s' "${CMAKE_ARGS}" | cksum | cut -d' ' -f1)"
+    fi
+    BUILD_DIR="${BUILD_ROOT}/${COMPILER}-${variant}${suffix}"
     select_compiler
     log "configure ${BUILD_DIR} (${build_type}, compiler=${COMPILER})"
     # shellcheck disable=SC2086
