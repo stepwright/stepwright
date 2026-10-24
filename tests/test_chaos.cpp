@@ -7,7 +7,8 @@
 // for a random delay. A consumer machine drains merge(channel, interval) on
 // whatever thread delivers readiness. Checks: mutual exclusion, exactly-once
 // completion, no hang, results in {ok, timed_out, cancelled}, and that the consumer
-// received exactly the successfully sent values.
+// received exactly the successfully sent values. The second test runs the same
+// units with every machine bound to a thread_pool (spec M4 §5).
 #include <gtest/gtest.h>
 
 #include "test_support.hpp"
@@ -72,7 +73,13 @@ struct critical_op : stepwright::machine<critical_op> {
 };
 
 struct unit {
-    explicit unit(world& w) : guard(w.mutex, op) { op.w = &w; }
+    unit(world& w, stepwright::thread_pool* pool) : guard(w.mutex, op) {
+        op.w = &w;
+        if (pool != nullptr) {
+            op.bind(*pool);
+            guard.bind(*pool);
+        }
+    }
     critical_op op;
     stepwright::async_mutex::guarded guard;
     std::optional<stepwright::with_deadline> deadline;
@@ -82,11 +89,15 @@ struct sink {
     std::atomic<int> done{0};
     stepwright::error result;
 };
-} // namespace
 
-TEST(chaos, regression_primitives_and_streams_under_threads) {
+void run_chaos(bool on_pool) {
     const int rounds = test_support::stress_iterations(1000);
     stepwright::steady_timer_service timers;
+    std::optional<stepwright::thread_pool> pool_storage;
+    stepwright::thread_pool* pool = nullptr;
+    if (on_pool) {
+        pool = &pool_storage.emplace(4);
+    }
     stepwright::channel<std::uint64_t> channel(2);
     world w;
     w.timers = &timers;
@@ -106,6 +117,9 @@ TEST(chaos, regression_primitives_and_streams_under_threads) {
             tick_items.fetch_add(1);
         }
     });
+    if (pool != nullptr) {
+        consumer.bind(*pool);
+    }
     stepwright::cancel_source consumer_cancel;
     test_support::receiver consumer_done;
     consumer.start(consumer_done.callback(), consumer_cancel.token());
@@ -125,7 +139,7 @@ TEST(chaos, regression_primitives_and_streams_under_threads) {
         std::uniform_int_distribution<int> timeout_us(0, 400);
         std::uniform_int_distribution<int> coin(0, 3);
         for (int r = 0; r < rounds && !hung.load(); ++r) {
-            std::array<unit, 4> units{unit(w), unit(w), unit(w), unit(w)};
+            std::array<unit, 4> units{unit(w, pool), unit(w, pool), unit(w, pool), unit(w, pool)};
             for (auto& u : units) {
                 u.op.hold = std::chrono::microseconds(hold_us(rng));
                 u.deadline.emplace(u.guard, timers, std::chrono::microseconds(timeout_us(rng)));
@@ -203,4 +217,16 @@ TEST(chaos, regression_primitives_and_streams_under_threads) {
     EXPECT_EQ(received_sum.load(), w.sent_sum.load());
     EXPECT_TRUE(consumer_done.result.is(stepwright::errc::cancelled));
     EXPECT_EQ(channel.size(), 0U);
+    if (pool != nullptr) {
+        pool->wait_idle();
+    }
+}
+} // namespace
+
+TEST(chaos, regression_primitives_and_streams_under_threads) {
+    run_chaos(false);
+}
+
+TEST(chaos, primitives_and_streams_on_a_thread_pool) {
+    run_chaos(true);
 }
