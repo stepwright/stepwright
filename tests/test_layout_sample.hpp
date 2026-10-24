@@ -3,7 +3,9 @@
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <utility>
+#include <vector>
 struct layout_sample : stepwright::machine<layout_sample> {
     step begin();
 };
@@ -50,3 +52,42 @@ inline m2_layout measure_m2_layout() {
     return m2_layout{STEPWRIGHT_M2_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
 }
 m2_layout ndebug_m2_layout();
+
+// Every public M3 type (aliases keep template commas out of the macro).
+struct layout_source : stepwright::source_machine<layout_source, int> {
+    step begin();
+};
+using layout_merge2 = stepwright::merge<int, 2>;
+using layout_merge8 = stepwright::merge<int, 8>;
+using layout_just3 = stepwright::just_source<int, 3>;
+using layout_range = stepwright::range_source<std::vector<int>>;
+using layout_item_fn = std::optional<int> (*)();
+using layout_generate = stepwright::generate_source<layout_item_fn>;
+using layout_each_fn = void (*)(int&&);
+using layout_for_each = stepwright::for_each_op<int, layout_each_fn>;
+#define STEPWRIGHT_M3_LAYOUT_TYPES(X)                                                              \
+    X(stepwright::pull<int>)                                                                       \
+    X(stepwright::source<int>::ready_op)                                                           \
+    X(layout_source)                                                                               \
+    X(stepwright::channel<int>)                                                                    \
+    X(stepwright::channel<int>::send_op)                                                           \
+    X(layout_merge2)                                                                               \
+    X(layout_merge8)                                                                               \
+    X(stepwright::merge_range<int>)                                                                \
+    X(stepwright::broadcast<int>)                                                                  \
+    X(stepwright::broadcast<int>::publish_op)                                                      \
+    X(stepwright::broadcast<int>::subscription)                                                    \
+    X(stepwright::empty_source<int>)                                                               \
+    X(layout_just3)                                                                                \
+    X(layout_range)                                                                                \
+    X(layout_generate)                                                                             \
+    X(stepwright::interval_source)                                                                 \
+    X(layout_for_each)
+
+inline constexpr std::size_t m3_layout_count =
+    0 STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_COUNT);
+using m3_layout = std::array<std::pair<std::size_t, std::size_t>, m3_layout_count>;
+inline m3_layout measure_m3_layout() {
+    return m3_layout{STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
+}
+m3_layout ndebug_m3_layout();

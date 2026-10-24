@@ -9,3 +9,6 @@ std::size_t ndebug_align() {
 m2_layout ndebug_m2_layout() {
     return measure_m2_layout();
 }
+m3_layout ndebug_m3_layout() {
+    return measure_m3_layout();
+}
