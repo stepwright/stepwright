@@ -19,3 +19,13 @@ TEST(machine, regression_layout_ndebug) {
               << " task=" << sizeof(stepwright::task) << " step=" << sizeof(stepwright::step)
               << " manual_executor=" << sizeof(stepwright::manual_executor) << '\n';
 }
+TEST(layout, regression_m2_layout_ndebug) {
+    const auto debug = measure_m2_layout();
+    const auto release = ndebug_m2_layout();
+    const std::array<const char*, m2_layout_count> names{
+        STEPWRIGHT_M2_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_NAME)};
+    for (std::size_t i = 0; i < m2_layout_count; ++i) {
+        EXPECT_EQ(debug[i], release[i]) << names[i];
+        std::cout << names[i] << " size=" << debug[i].first << " align=" << debug[i].second << '\n';
+    }
+}

@@ -6,3 +6,6 @@ std::size_t ndebug_size() {
 std::size_t ndebug_align() {
     return alignof(layout_sample);
 }
+m2_layout ndebug_m2_layout() {
+    return measure_m2_layout();
+}
