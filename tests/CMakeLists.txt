@@ -20,3 +20,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CODE_INSTRUMENTATION MATCHES "^(TSAN|L
 endif()
 set_source_files_properties(test_layout.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 set_source_files_properties(test_layout_ndebug.cpp PROPERTIES COMPILE_DEFINITIONS "NDEBUG")
+
+# A broken analyser invocation must not silently turn into a clean report.
+# This runs a failing stub, never the host's cppcheck (analysis stays in Docker).
+find_program(STEPWRIGHT_FALSE_PROGRAM false REQUIRED)
+add_test(NAME regression_cppcheck_runner_failure
+    COMMAND ${CMAKE_COMMAND} -E env CPPCHECK=${STEPWRIGHT_FALSE_PROGRAM}
+        bash ${PROJECT_SOURCE_DIR}/scripts/run-cppcheck.sh
+        -b ${CMAKE_CURRENT_BINARY_DIR}/cppcheck-failure)
+set_tests_properties(regression_cppcheck_runner_failure PROPERTIES WILL_FAIL TRUE)

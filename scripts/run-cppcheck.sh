@@ -104,7 +104,7 @@ set -x
     -i"${BUILD_DIR}" -iCMakeFiles \
     ${QUIET} \
     ${EXTRA_OPTS} \
-    "${TARGET_ARG[@]}" || true
+    "${TARGET_ARG[@]}"
 set +x
 
 echo
