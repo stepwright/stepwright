@@ -10,3 +10,4 @@ function(stepwright_add_benchmark name)
 endfunction()
 
 stepwright_add_benchmark(bench_engine)
+stepwright_add_benchmark(bench_primitives)
