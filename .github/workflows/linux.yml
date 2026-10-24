@@ -52,3 +52,17 @@ jobs:
         env:
           COMPILER: clang
         run: make docker-${{ matrix.sanitizer }}
+
+  track-tasks:
+    name: arm64 / gcc / live task registry
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dev image
+        run: make docker-image
+      - name: Build and test with STEPWRIGHT_TRACK_TASKS=ON
+        env:
+          COMPILER: gcc
+          BUILD_TYPE: Debug
+          CMAKE_ARGS: -DSTEPWRIGHT_TRACK_TASKS=ON
+        run: make docker-test
