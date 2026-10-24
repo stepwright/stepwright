@@ -1,8 +1,12 @@
 #pragma once
 
+#include <stepwright/detail/live_state.hpp>
 #include <stepwright/detail/type_name.hpp>
 #include <stepwright/executor.hpp>
 #include <stepwright/task.hpp>
+#if STEPWRIGHT_TRACK_TASKS
+#include <stepwright/detail/live_registry.hpp>
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -29,6 +33,9 @@ struct step {
     void (*resume)(work_item*) noexcept = nullptr;
     task* child = nullptr;
     error result;
+#if STEPWRIGHT_TRACK_TASKS
+    const char* name = nullptr; // step to resume at (live task registry only)
+#endif
 };
 
 template <class D>
@@ -179,11 +186,21 @@ private:
     }
     template <auto Fn>
     static step transition(typename step::kind action) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        step value{.action = action,
+                   .call = &invoke<Fn>,
+                   .resume = &resume<Fn>,
+                   .child = nullptr,
+                   .result = {}};
+        value.name = detail::value_name<Fn>();
+        return value;
+#else
         return {.action = action,
                 .call = &invoke<Fn>,
                 .resume = &resume<Fn>,
                 .child = nullptr,
                 .result = {}};
+#endif
     }
     static machine& owner(work_item* item) noexcept {
         // Downcasting a nullable secondary-base pointer preserves null. Reject it
@@ -228,6 +245,9 @@ private:
         STEPWRIGHT_ASSERT(state_.load(std::memory_order_relaxed) == 0, "start while active");
         receiver_ = receiver;
         state_.store(active | running, std::memory_order_release);
+#if STEPWRIGHT_TRACK_TASKS
+        detail::live_registry::instance().add(live_, detail::type_name<D>());
+#endif
         cancellation_.arm(token, &cancel, this);
         drive(invoke<&D::begin>(this, {}));
     }
@@ -341,8 +361,24 @@ private:
             }
         }
     }
+    // Live registry state (no code without STEPWRIGHT_TRACK_TASKS). Always written
+    // by the driver that owns `running`, before ownership can pass to another thread.
+    void track([[maybe_unused]] detail::live_state s,
+               [[maybe_unused]] const char* resume = nullptr) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        live_.set(s, resume);
+#endif
+    }
+    static const char* resume_name([[maybe_unused]] const step& value) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        return value.name;
+#else
+        return nullptr;
+#endif
+    }
     void drive(step value) noexcept {
         // This noexcept boundary deliberately terminates if a user step throws.
+        track(detail::live_state::running);
         for (;;) {
             error result;
             switch (value.action) {
@@ -353,6 +389,7 @@ private:
                     break;
                 case step::kind::child:
                     work_item::run = value.resume;
+                    track(detail::live_state::waiting_child, resume_name(value));
                     value.child->start({.fn =
                                             [](void* ctx, const error& delivered) noexcept {
                                                 static_cast<machine*>(ctx)->deliver_child(
@@ -363,9 +400,11 @@ private:
                     if (!await_child(result)) {
                         return;
                     }
+                    track(detail::live_state::running);
                     break;
                 case step::kind::park:
                     work_item::run = value.resume;
+                    track(detail::live_state::parked, resume_name(value));
                     if (token().can_be_cancelled()) {
                         // Pair SC park/request publication and the two SC reads
                         // to exclude the cross-atomic store-buffering outcome.
@@ -382,11 +421,13 @@ private:
                     if (suspend(wake_ready)) {
                         return;
                     }
+                    track(detail::live_state::running);
                     result = consume();
                     break;
                 case step::kind::defer:
                     STEPWRIGHT_ASSERT(home_, "defer requires bind");
                     work_item::run = value.resume;
+                    track(detail::live_state::deferred, resume_name(value));
                     state_.fetch_or(deferring, std::memory_order_acq_rel);
                     // Off the home executor, hand the machine over *before* posting:
                     // whichever executor thread runs the item owns the next step, so
@@ -404,6 +445,7 @@ private:
                     if (suspend(deferred_ready)) {
                         return;
                     }
+                    track(detail::live_state::running);
                     state_.fetch_and(~(deferred_ready | deferring), std::memory_order_acq_rel);
                     break;
             }
@@ -426,6 +468,9 @@ private:
             }
         }
         result_ = {};
+#if STEPWRIGHT_TRACK_TASKS
+        detail::live_registry::instance().remove(live_);
+#endif
         if (result) {
             result.add_context(detail::type_name<D>());
             if constexpr (requires(D& derived, error& e) { derived.annotate(e); }) {
@@ -448,5 +493,8 @@ private:
     error child_result_;
     std::atomic<std::uint32_t> state_{0};
     std::atomic<bool> step_guard_{false};
+#if STEPWRIGHT_TRACK_TASKS
+    detail::live_node live_;
+#endif
 };
 } // namespace stepwright

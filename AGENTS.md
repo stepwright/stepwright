@@ -39,6 +39,11 @@ Container build trees live in the Docker volume `stepwright-build-<platform>`
 (`make docker-clean` deletes it); native build trees live in `build/`.
 On macOS, CMake may need `export PATH="/opt/homebrew/bin:$PATH"`.
 
+`CMAKE_ARGS=-DSTEPWRIGHT_TRACK_TASKS=ON` builds everything with the live task
+registry (`include/stepwright/debug/live_tasks.hpp`). It changes class layout and is
+cached in the build tree, so give it its own tree (natively `BUILD_ROOT=build/track`;
+in the container a build type not used otherwise, e.g. `BUILD_TYPE=RelWithDebInfo`).
+
 `PLATFORM=linux/amd64` on Apple silicon runs under emulation: ordinary
 builds, tests, ASan and UBSan work, but ThreadSanitizer cannot start there
 (the emulator rejects the address-randomization change TSan needs). x86-64

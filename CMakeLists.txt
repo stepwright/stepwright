@@ -11,6 +11,9 @@ option(STEPWRIGHT_BUILD_EXAMPLES "Build stepwright examples" ${PROJECT_IS_TOP_LE
 option(STEPWRIGHT_BUILD_BENCHMARKS "Build stepwright benchmarks" ${PROJECT_IS_TOP_LEVEL})
 option(STEPWRIGHT_CLANG_TIDY "Run clang-tidy during the build" OFF)
 option(STEPWRIGHT_ENABLE_LOGGING "Enable spdlog-backed debug logging (dev only)" OFF)
+# Changes the layout of machine/source_machine: applies to the whole program
+# through the interface target (see include/stepwright/debug/live_tasks.hpp).
+option(STEPWRIGHT_TRACK_TASKS "Track in-flight machines in the live task registry (debug)" OFF)
 set(STEPWRIGHT_LOG_LEVEL "DEBUG" CACHE STRING
     "Compile-time log level when STEPWRIGHT_ENABLE_LOGGING=ON")
 set_property(CACHE STEPWRIGHT_LOG_LEVEL PROPERTY STRINGS
@@ -52,6 +55,11 @@ target_include_directories(stepwright INTERFACE
 target_compile_features(stepwright INTERFACE cxx_std_20)
 find_package(Threads REQUIRED)
 target_link_libraries(stepwright INTERFACE Threads::Threads)
+
+if(STEPWRIGHT_TRACK_TASKS)
+    target_compile_definitions(stepwright INTERFACE STEPWRIGHT_TRACK_TASKS=1)
+    message(STATUS "stepwright: live task registry ENABLED")
+endif()
 
 if(STEPWRIGHT_ENABLE_LOGGING)
     include(cmake/Dependencies.cmake)

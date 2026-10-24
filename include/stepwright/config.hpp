@@ -38,3 +38,11 @@ namespace stepwright::detail {
 #else
 #define STEPWRIGHT_ASSERT(cond, msg) static_cast<void>(0)
 #endif
+
+// Live task registry (debug/live_tasks.hpp). Set by the CMake option
+// STEPWRIGHT_TRACK_TASKS on the `stepwright` interface target. Unlike STEPWRIGHT_DEBUG it
+// CHANGES CLASS LAYOUT (machine<D>, source_machine<D, T>, step, source_step), so
+// it must have the same value in every translation unit of a program.
+#ifndef STEPWRIGHT_TRACK_TASKS
+#define STEPWRIGHT_TRACK_TASKS 0
+#endif

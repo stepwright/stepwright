@@ -1,9 +1,13 @@
 #pragma once
 
+#include <stepwright/detail/live_state.hpp>
 #include <stepwright/detail/type_name.hpp>
 #include <stepwright/detail/wait_core.hpp>
 #include <stepwright/executor.hpp>
 #include <stepwright/stream/source.hpp>
+#if STEPWRIGHT_TRACK_TASKS
+#include <stepwright/detail/live_registry.hpp>
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -32,6 +36,9 @@ struct source_step {
     void (*resume)(work_item*) noexcept = nullptr;
     task* child = nullptr;
     error result;
+#if STEPWRIGHT_TRACK_TASKS
+    const char* name = nullptr; // step to resume at (live task registry only)
+#endif
 };
 
 template <class D, class T>
@@ -75,6 +82,11 @@ public:
         if (held_ || (s & item_ready) != 0) {
             std::destroy_at(&item_.value);
         }
+#if STEPWRIGHT_TRACK_TASKS
+        if (live_started_) {
+            detail::live_registry::instance().remove(live_);
+        }
+#endif
     }
 
     /// Thread-safe result for the current/next park (same rules as machine::wake);
@@ -195,7 +207,8 @@ protected:
         return transition<Fn>(step::kind::park);
     }
     template <auto Fn>
-    /// Post the next step to the bound home executor (required).
+    /// Post the next step to the bound home executor (required); Fn runs on a
+    /// thread of that executor (see machine::defer).
     static step defer() noexcept {
         auto value = transition<Fn>(step::kind::defer);
         value.resume = &deferred<Fn>;
@@ -261,11 +274,21 @@ private:
     }
     template <auto Fn>
     static step transition(typename step::kind action) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        step value{.action = action,
+                   .call = &invoke<Fn>,
+                   .resume = &resume<Fn>,
+                   .child = nullptr,
+                   .result = {}};
+        value.name = detail::value_name<Fn>();
+        return value;
+#else
         return {.action = action,
                 .call = &invoke<Fn>,
                 .resume = &resume<Fn>,
                 .child = nullptr,
                 .result = {}};
+#endif
     }
     static source_machine& owner(work_item* item) noexcept {
         if (!item) {
@@ -321,13 +344,34 @@ private:
     // stays in the buffer for the caller and nothing is published. Async: a
     // resumption publishes the outcome and signals a registered readiness wait;
     // after that publication the driver does not touch the object again.
+    // Live registry hooks (no code without STEPWRIGHT_TRACK_TASKS). Written by the
+    // driver that owns `running`, before ownership can pass to another thread.
+    void track([[maybe_unused]] detail::live_state s,
+               [[maybe_unused]] const char* resume = nullptr) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        if (!live_started_) {
+            live_started_ = true;
+            detail::live_registry::instance().add(live_, detail::type_name<D>());
+        }
+        live_.set(s, resume);
+#endif
+    }
+    static const char* resume_name([[maybe_unused]] const step& value) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        return value.name;
+#else
+        return nullptr;
+#endif
+    }
     template <bool Sync>
     outcome drive(step value) noexcept {
+        track(detail::live_state::running);
         for (;;) {
             error result;
             switch (value.action) {
                 case step::kind::emit:
                     next_ = value.call;
+                    track(detail::live_state::suspended, resume_name(value));
                     if constexpr (!Sync) {
                         publish_item();
                     }
@@ -339,6 +383,7 @@ private:
                     break;
                 case step::kind::child:
                     work_item::run = value.resume;
+                    track(detail::live_state::waiting_child, resume_name(value));
                     value.child->start({.fn =
                                             [](void* ctx, const error& delivered) noexcept {
                                                 static_cast<source_machine*>(ctx)->deliver_child(
@@ -355,9 +400,11 @@ private:
                         }
                         return outcome::suspended;
                     }
+                    track(detail::live_state::running);
                     break;
                 case step::kind::park:
                     work_item::run = value.resume;
+                    track(detail::live_state::parked, resume_name(value));
                     if (token().can_be_cancelled()) {
                         // Same SC park/cancel handshake as machine<D>.
                         state_.fetch_or(parked, std::memory_order_seq_cst);
@@ -375,11 +422,13 @@ private:
                         }
                         return outcome::suspended;
                     }
+                    track(detail::live_state::running);
                     result = consume();
                     break;
                 case step::kind::defer:
                     STEPWRIGHT_ASSERT(home_, "defer requires bind");
                     work_item::run = value.resume;
+                    track(detail::live_state::deferred, resume_name(value));
                     state_.fetch_or(deferring, std::memory_order_acq_rel);
                     // Off the home executor, hand the machine over *before* posting:
                     // whichever executor thread runs the item owns the next step, so
@@ -403,6 +452,7 @@ private:
                         }
                         return outcome::suspended;
                     }
+                    track(detail::live_state::running);
                     state_.fetch_and(~(deferred_ready | deferring), std::memory_order_acq_rel);
                     break;
             }
@@ -421,6 +471,9 @@ private:
     }
     template <bool Sync>
     void finish(error result) noexcept {
+#if STEPWRIGHT_TRACK_TASKS
+        detail::live_registry::instance().remove(live_);
+#endif
         if (result) {
             result.add_context(detail::type_name<D>());
             if constexpr (requires(D& derived, error& e) { derived.annotate(e); }) {
@@ -588,5 +641,9 @@ private:
     bool owned_ = true; // consumer-only: the consumer owns the driver between pulls
     bool held_ = false; // consumer-only: the buffer holds an unpublished item
     item_slot item_;
+#if STEPWRIGHT_TRACK_TASKS
+    bool live_started_ = false; // driver-only: registered once, at the first run
+    detail::live_node live_;
+#endif
 };
 } // namespace stepwright

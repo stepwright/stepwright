@@ -1,6 +1,8 @@
 #pragma once
 
 // Umbrella header: include this to get the whole public stepwright API.
+// Not included: stepwright/debug/live_tasks.hpp (opt-in diagnostics; pulls <ostream>
+// and <vector>), included explicitly where hangs are diagnosed.
 
 #include <stepwright/algo/adapters.hpp>
 #include <stepwright/algo/delay.hpp>

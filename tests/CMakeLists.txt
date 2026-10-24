@@ -23,6 +23,10 @@ endforeach()
 foreach(name static_lifetime thread_pool virtual_executor)
     stepwright_add_test(test_${name})
 endforeach()
+# The registry test tracks tasks in its own executable only: every stepwright
+# translation unit of that program sees the same definition (no ODR risk).
+stepwright_add_test(test_live_tasks)
+target_compile_definitions(test_live_tasks PRIVATE STEPWRIGHT_TRACK_TASKS=1)
 stepwright_add_test(test_layout test_layout_ndebug.cpp)
 stepwright_add_test(test_alloc)
 stepwright_add_test(test_alloc_m2)
@@ -31,6 +35,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CODE_INSTRUMENTATION MATCHES "^(TSAN|L
     target_compile_definitions(test_alloc PRIVATE STEPWRIGHT_SANITIZER_ALLOC_HOOK)
     target_compile_definitions(test_alloc_m2 PRIVATE STEPWRIGHT_SANITIZER_ALLOC_HOOK)
     target_compile_definitions(test_alloc_m3 PRIVATE STEPWRIGHT_SANITIZER_ALLOC_HOOK)
+    target_compile_definitions(test_live_tasks PRIVATE STEPWRIGHT_SANITIZER_ALLOC_HOOK)
     target_compile_definitions(test_static_lifetime PRIVATE STEPWRIGHT_NO_ALLOC_REPLACEMENT)
 endif()
 set_source_files_properties(test_layout.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
