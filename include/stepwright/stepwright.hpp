@@ -16,6 +16,7 @@
 #include <stepwright/stream/channel.hpp>
 #include <stepwright/stream/for_each.hpp>
 #include <stepwright/stream/source.hpp>
+#include <stepwright/stream/source_machine.hpp>
 #include <stepwright/stream/sources.hpp>
 #include <stepwright/sync/async_mutex.hpp>
 #include <stepwright/sync/event.hpp>
