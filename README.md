@@ -23,10 +23,15 @@ struct fetch_and_process : stepwright::machine<fetch_and_process> {
 
 ## Build
 
+macOS builds natively; Linux builds run in a pinned Docker container.
+
 ```bash
-make test        # configure, build and run the tests
-make help        # all targets
+make test          # macOS: configure, build and run the tests
+make docker-test   # Linux (in Docker): same, COMPILER=gcc|clang|clang-libcxx
+make help          # all targets
 ```
+
+Supported: macOS (AppleClang) and Linux (GCC 14, Clang 20; x86-64 and arm64).
 
 ## License
 

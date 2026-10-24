@@ -19,3 +19,4 @@ records, per component, what was built and which public prior art informed it.
 | Date | Milestone | Component(s) | Spec | Notes |
 |---|---|---|---|---|
 | 2026-10-24 | M0 | Build system, tooling, CI, formatting config, license | Project plan | Repository started fresh; build/CI scripts reviewed and adapted; formatting and lint configs written new. |
+| 2026-10-24 | M0.5 | Linux dev container, single CI entry script, CI workflows | Project plan | Ubuntu 24.04 image with pinned GCC 14 / Clang 20 toolchain; `scripts/ci.sh` shared by local runs and CI; dependencies pinned by URL + SHA-256. |

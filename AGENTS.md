@@ -6,15 +6,36 @@ explicit state machines: each step is a member function that returns the next
 transition (`done`, `fail`, `then`, `after`, `forward`, `park`, `defer`).
 See `docs/design.md` (engine, threading, cancellation) and `docs/guide.md`.
 
+## Supported platforms
+macOS (AppleClang, native) and Linux (GCC 14, Clang 20 with libstdc++ or
+libc++; x86-64 and arm64). Windows is not supported.
+
 ## Build and test
+Linux always runs in the pinned dev container (`docker/Dockerfile`); macOS
+runs natively. Both go through `scripts/ci.sh`, which CI uses too.
+
 ```bash
-make test          # Release build + ctest
-make debug         # Debug build into build/debug
+# macOS, native (needs Xcode command-line tools + CMake >= 3.21; Ninja optional)
+make test          # Release build + tests
+make debug         # Debug build + tests
 make asan          # ASan + UBSan
 make tsan          # ThreadSanitizer
-make benchmarks    # Release benchmarks with repetitions
-make format        # clang-format in place
+make check         # forbidden scan + release + debug + asan + tsan
+
+# Linux, in Docker (COMPILER=gcc|clang|clang-libcxx, PLATFORM=linux/amd64 for x86-64)
+make docker-test
+make docker-asan / docker-tsan / docker-ubsan / docker-leak
+make docker-shell  # interactive shell in the container
+
+# Tool-version-sensitive tasks always run in the container
+make format        # clang-format 20, in place
+make format-check
+make tidy          # clang-tidy 20
+make cppcheck
+make coverage
 ```
+Container build trees live in the Docker volume `stepwright-build-<platform>`
+(`make docker-clean` deletes it); native build trees live in `build/`.
 On macOS, CMake may need `export PATH="/opt/homebrew/bin:$PATH"`.
 
 ## Independent-implementation rules (mandatory)
