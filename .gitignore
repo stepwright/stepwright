@@ -1,0 +1,31 @@
+build/
+.cache/
+.DS_Store
+*.o
+*.a
+*.dylib
+*.so
+.claude/
+.cursor/
+cmake-build-*/
+compile_commands.json
+Testing/
+
+# Legacy top-level build flavors (now nested under build/)
+build-*/
+
+# Code coverage artifacts
+coverage_html/
+coverage.info
+coverage.raw.info
+*.gcno
+*.gcda
+*.gcov
+
+# Cppcheck working dir + reports (created under build/<dir>/cppcheck/ but
+# also at the root if invoked outside CMake)
+/cppcheck/
+
+# clang-tidy fix-it caches
+.clang-tidy.cache/
+
