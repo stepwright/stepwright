@@ -1,45 +1,178 @@
 # stepwright
 
-> Work in progress: v0.1 is under active development. The API is not stable yet.
+**Write asynchronous operations as explicit, inspectable C++20 state machines —
+without heap allocation per step or wait.** Header-only, MIT-licensed, for macOS
+and Linux.
 
-stepwright is a header-only C++20 library for writing asynchronous operations as
-explicit, zero-allocation state machines. Each step is an ordinary member
-function that returns what happens next:
+An operation is a class. A step returns what should happen next; a small driver
+loop does it. State and children are ordinary members, not hidden frames:
 
 ```cpp
-struct fetch_and_process : stepwright::machine<fetch_and_process> {
-    step begin() { return after<&fetch_and_process::on_fetched>(fetch_); }
+#include <stepwright/stepwright.hpp>
+#include <chrono>
+#include <cstdio>
 
-    step on_fetched(const stepwright::error& e) {
-        if (e) return fail(e);
-        process_.emplace(fetch_.data());
-        return forward(*process_);
+struct reminder : stepwright::machine<reminder> {
+    stepwright::delay pause;
+    explicit reminder(stepwright::timer_service& timers)
+        : pause(timers, std::chrono::milliseconds(25)) {}
+    step begin() { return after<&reminder::announce>(pause); }
+    step announce() { // skipped automatically if the child failed
+        std::puts("ready");
+        return done();
     }
-
-    fetch_op fetch_;
-    std::optional<process_op> process_;
 };
+
+int main() {
+    // Virtual time makes this demo instant. A steady_timer_service works too.
+    stepwright::testing::virtual_executor clock;
+    reminder op(clock);
+    bool succeeded = false;
+    op.start({.fn = [](void* ctx, const stepwright::error& e) noexcept {
+                  *static_cast<bool*>(ctx) = !e;
+              },
+              .ctx = &succeeded});
+    clock.run_until_quiescent();
+    return succeeded ? 0 : 1;
+}
 ```
 
-## Build
+Build this as `c++ -std=c++20 -pthread -Iinclude demo.cpp -o demo`, or link the
+CMake interface target below. The [guide](docs/guide.md) starts with the task and
+lifetime contracts; [ten runnable examples](examples/README.md) show real timers,
+thread pools, cancellation, backpressure and deterministic race replay.
 
-macOS builds natively; Linux builds run in a pinned Docker container.
+## Why stepwright?
+
+- **Explicit state.** Every suspension is a named step. Inspect members and the
+  next step in a debugger; opt into a live task registry to diagnose hangs.
+- **Predictable successful hot paths.** Embedded waiter/work nodes, static step
+  dispatch and constant-stack driver loops, including synchronous child chains.
+- **Structured work.** Tokens propagate to children. Joins and deadlines wait for
+  all started work to finish; errors are values with machine-name context.
+- **Useful building blocks.** Events, shared tasks, async mutexes, joins, timers,
+  pull streams, channels, merge, broadcast and a work-stealing pool.
+- **Testable scheduling.** Manual time and a seeded virtual executor explore and
+  replay interleavings without real sleeps.
+
+### The trade-offs
+
+| Approach | Prefer it when… | What stepwright trades |
+|---|---|---|
+| C++20 coroutines | You want natural sequential syntax and compatible awaiters. Visible child frames may be elided and be faster. | Named steps and member-owned state make storage/lifetime explicit, but require more code. No coroutine support or frame elision is required. |
+| Senders/receivers | You need a general execution/composition vocabulary and its ecosystem. | A smaller model with one task protocol, not a P2300 implementation or adapter. |
+| Callbacks | Your operation is small and ownership is already clear. | A driver loop, consistent cancellation and errors instead of ad hoc chains; some bookkeeping over a bare call. |
+
+Zero-allocation claims concern successful **steps and waits**, not everything a
+program does: pools, source state, join storage and buffers allocate at construction;
+errors, diagnostics, callable convenience posts and unbounded buffer growth can
+allocate. See [performance guidance](docs/guide.md#performance-guidance).
+
+## Install
+
+CMake 3.21 or newer is needed for CMake integration; the library needs only C++20
+and threads by default. Developer dependencies are not fetched for subprojects.
+
+### FetchContent
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(stepwright
+    GIT_REPOSITORY https://github.com/stepwright/stepwright.git
+    GIT_TAG v0.1.0)
+FetchContent_MakeAvailable(stepwright)
+target_link_libraries(my_app PRIVATE stepwright::stepwright)
+```
+
+`v0.1.0` is the release tag; before it exists, pin a reviewed commit instead.
+`my_app` denotes your existing executable/library target.
+
+### Installed package
 
 ```bash
-make test          # macOS: configure, build and run the tests
-make docker-test   # Linux (in Docker): same, COMPILER=gcc|clang|clang-libcxx
-make help          # all targets
+cmake -S . -B build/install -DCMAKE_BUILD_TYPE=Release \
+  -DSTEPWRIGHT_BUILD_TESTS=OFF -DSTEPWRIGHT_BUILD_EXAMPLES=OFF -DSTEPWRIGHT_BUILD_BENCHMARKS=OFF
+cmake --install build/install --prefix "$PWD/build/prefix"
+# Configure your application with -DCMAKE_PREFIX_PATH="$PWD/build/prefix"
 ```
 
-Supported: macOS (AppleClang) and Linux (GCC 14, Clang 20; x86-64 and arm64).
+```cmake
+find_package(stepwright 0.1 CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE stepwright::stepwright)
+```
 
-## Learn and measure
+The package exports headers, C++20 and `Threads::Threads`, not developer warning
+or sanitizer flags. While major version is zero, CMake compatibility is confined
+to the same minor version. A relocatable `stepwright.pc` is installed under
+`lib/pkgconfig` (or your `CMAKE_INSTALL_LIBDIR`): add that directory to
+`PKG_CONFIG_PATH` and use `pkg-config --cflags --libs stepwright`.
 
-- [`examples/`](examples/README.md): ten runnable programs, from a first machine
-  to finding a hang (`make run EXAMPLE=01_first_machine`).
-- [`docs/benchmarks.md`](docs/benchmarks.md): published results;
-  [`benchmarks/README.md`](benchmarks/README.md): what is measured and how.
+### Vendored source
+
+```cmake
+add_subdirectory(external/stepwright)
+target_link_libraries(my_app PRIVATE stepwright::stepwright)
+```
+
+Alternatively, copy `include/stepwright/` and add its parent to your include path.
+Include `<stepwright/stepwright.hpp>` or individual self-contained headers. Only opt-in
+logging needs an external package (`spdlog`).
+
+## Supported platforms
+
+| Platform | Support floor | Also exercised |
+|---|---|---|
+| macOS arm64 | AppleClang 16 | Native Release, Debug and sanitizers |
+| Linux arm64 and x86-64 | GCC 13, Clang 18, with a C++20 standard library | GCC 14, Clang 20 with libstdc++ and libc++ |
+
+Windows is not supported. CI runs Linux in the pinned development image and macOS
+natively; x86-64 Linux is also tested under Docker emulation on Apple silicon
+(except TSan, which requires a native runner). There is no stable binary ABI or
+promise of source compatibility across 0.x minor versions.
+
+## Build, test and documentation
+
+```bash
+export PATH="/opt/homebrew/bin:$PATH"  # macOS, if CMake is installed there
+make test                            # native Release + tests + examples
+make debug
+make asan                            # ASan + UBSan
+make tsan
+COMPILER=gcc make docker-test        # Linux, no host tool installation
+COMPILER=gcc13 make docker-test      # support floor (or clang18)
+make consumer                        # native integration tests
+make docker-consumer
+make format-check                    # pinned clang-format, in Docker
+make docs                            # Doxygen HTML, in Docker
+```
+
+The API reference is generated in the Docker build volume at `/work/build/docs/html`.
+To copy it out locally, create `build/api`, then run
+`docker run --rm -v stepwright-build-host:/work/build -v "$PWD/build/api":/out ubuntu:24.04 cp -r /work/build/docs/html /out/`.
+Use `make help` and [CONTRIBUTING.md](CONTRIBUTING.md) for the full quality matrix.
+
+## Performance
+
+The [published benchmark results](docs/benchmarks.md) include engine steps,
+primitives, streams, threaded workloads, baseline pools and coroutine comparisons,
+with flags, machine context, medians and variation. The [method](benchmarks/README.md)
+explains what is counted, where frames allocate and where scheduling dominates.
+In this run a `then` step is 1.92 ns natively and 2.62 ns on Linux/GCC; an `after`
+on a synchronous child is 4.05 / 5.27 ns. With useful leaf work, the eight-worker
+fan-out is 7.3× / 6.6× faster than its one-worker reference.
+They are measurements, not a guarantee for your workload; stepwright does not always
+beat a compiler-elided coroutine or a simple hand-written callback.
+
+## Read more
+
+- [User guide and FAQ](docs/guide.md) · [examples](examples/README.md)
+- [Overview](docs/overview.md) · [engine](docs/design/engine.md) ·
+  [primitives](docs/design/primitives.md) · [streams](docs/design/streams.md) ·
+  [runtime](docs/design/runtime.md) · [performance design](docs/design/performance.md)
+- [Design provenance](docs/provenance.md) · [changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md) · [code of conduct](CODE_OF_CONDUCT.md) ·
+  [security policy](SECURITY.md)
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+[MIT](LICENSE). Contributions use the same license and DCO sign-off.

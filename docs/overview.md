@@ -7,20 +7,10 @@ explicit state machines. An operation is a class; each *step* is an ordinary
 member function that returns a *transition* saying what happens next. A small
 *driver loop* in the base class carries the transitions out.
 
-```cpp
-struct fetch_and_process : stepwright::machine<fetch_and_process> {
-    step begin() { return after<&fetch_and_process::on_fetched>(fetch_); }
-
-    step on_fetched(const stepwright::error& e) {
-        if (e) return fail(e);
-        process_.emplace(fetch_.data());
-        return forward(*process_);          // finish with the child's result
-    }
-
-    fetch_op fetch_;
-    std::optional<process_op> process_;
-};
-```
+For a complete first program, see the [README](../README.md), then
+[the first machine example](../examples/01_first_machine.cpp). The
+[user guide](guide.md) explains the contracts and [design notes](design/engine.md)
+explain the implementation and memory-ordering arguments.
 
 It is aimed at systems code (storage, networking, schedulers, embedded
 runtimes) that needs predictable performance, explicit control flow that is
@@ -94,24 +84,19 @@ not to use C++20 coroutines.
 - **completion**: a function pointer plus context, called with
   `const error&`.
 
-## Roadmap (v0.1)
+## Public roadmap
 
-| Milestone | Scope |
-|---|---|
-| M0 | Build system, tooling, CI, license |
-| M0.5 | Linux dev container, `scripts/ci.sh`, CI workflows |
-| M1 | Core: `error`, `completion`, `cancel`, `task`, `machine<D>`, `executor` with inline and manual executors, type names, logging shim, engine benchmarks |
-| M2 | Primitives: `event`, `shared_task`, `async_mutex`, `async_shared_mutex`, `when_all`, `when_any`, timer services (steady and manual), `delay`, `with_deadline`, `make_task`, `finally_task`, `reschedule` |
-| M3 | Streams: `source<T>` pull protocol, `source_machine`, `channel`, `merge`, `broadcast`, `empty`/`just`/`from_range`/`generate`/`interval` |
-| M4 | Runtime: `thread_pool`, `virtual_executor` for deterministic tests, live task registry |
-| M5 | Examples; fan-out scaling (cancellation state, combinator counters, pool); benchmark method, coroutine baseline and published results |
-| M6 | Benchmarks (single- and multi-threaded, fair baselines, documented method), extending M5's suite |
-| M7 | Documentation, CMake install/export, packaging |
-| M8 | v0.1.0 release |
+v0.1 contains the machine engine and errors-as-values, structured cancellation,
+events, shared tasks, asynchronous mutexes, fan-out joins and deadlines; pull
+streams with bounded channels, merging and broadcasting; inline/manual and
+work-stealing executors, manual/steady timers, a deterministic virtual executor
+and an opt-in live task registry. It includes runnable examples, reproducible
+benchmarks, design arguments and installable CMake/pkg-config packages.
 
-Each milestone has its own detailed specification; later milestones build on
-the core's guarantees (zero allocation, stack safety, threading and
-cancellation semantics), so those must hold exactly as specified.
+Possible future directions include a C++20 coroutine adapter, more executor and
+event-loop adapters, Windows support, and vcpkg/Conan packages. These are directions,
+not scheduled commitments. Compatibility within the 0.x series is minor-version
+scoped; check the changelog before upgrading.
 
 ## Non-goals (v0.1)
 - Requiring coroutines (a coroutine adapter may come later).
@@ -121,5 +106,6 @@ cancellation semantics), so those must hold exactly as specified.
 - Exceptions as the error channel.
 
 ## Platforms
-macOS (AppleClang, native builds) and Linux (GCC 14 and Clang 20 with
-libstdc++ or libc++, x86-64 and arm64, built in the dev container).
+macOS (AppleClang 16 or newer, native builds) and Linux (GCC 13 or newer,
+Clang 18 or newer, libstdc++ or libc++, x86-64 and arm64). Linux development
+and validation run in the dev container, including GCC 14 and Clang 20.

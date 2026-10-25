@@ -24,6 +24,7 @@ foreach(name static_lifetime thread_pool virtual_executor scenarios)
     stepwright_add_test(test_${name})
 endforeach()
 stepwright_add_test(test_cancel_scaling)
+include(guide_snippets.cmake)
 # The registry test tracks tasks in its own executable only: every stepwright
 # translation unit of that program sees the same definition (no ODR risk).
 stepwright_add_test(test_live_tasks)
