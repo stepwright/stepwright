@@ -1,0 +1,9 @@
+---
+# Machine steps must be non-static, non-const member functions (the engine takes
+# `step (D::*)()`), even when a step does not touch the object: these two
+# suggestions cannot apply to them.
+InheritParentConfig: true
+Checks: >
+  -readability-convert-member-functions-to-static,
+  -readability-make-member-function-const
+...
