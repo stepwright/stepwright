@@ -13,8 +13,8 @@
 #include <utility>
 
 namespace stepwright::detail {
-// Completion protocol shared by every waiting operation: M2 waiters (through
-// async_op) and the readiness waits of M3 sources. The waiter is published (linked
+// Completion protocol shared by every waiting operation: primitive waiters (through
+// async_op) and the readiness waits of stream sources. The waiter is published (linked
 // into a primitive, scheduled on a timer, or flagged in a source's state word)
 // *before* its cancellation registration is armed, so a resolution can race with
 // arming. One atomic phase word decides who completes:

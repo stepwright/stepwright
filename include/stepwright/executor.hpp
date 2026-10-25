@@ -30,10 +30,10 @@ public:
     /// An executor that may run an item inside post() must return true on that
     /// thread (machines rely on it to keep deferral chains flat).
     virtual bool running_in_this_thread() const noexcept { return false; }
-    template <class F>
-        requires(!std::is_base_of_v<work_item, std::remove_cvref_t<F>>)
     /// Convenience post: allocate one owning node for F and free it after calling.
     /// Captures must survive invocation; allocation can throw, invocation must not.
+    template <class F>
+        requires(!std::is_base_of_v<work_item, std::remove_cvref_t<F>>)
     void post(F&& fn) {
         struct owned_item : work_item {
             std::decay_t<F> fn;

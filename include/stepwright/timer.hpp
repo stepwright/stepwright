@@ -48,12 +48,12 @@ struct timer_service::entry {
     void (*fire)(entry*) noexcept = nullptr;
 
     // Implementation-owned: pairing-heap links, ordering key and state.
-    clock::time_point deadline;
-    std::uint64_t sequence = 0;
-    entry* child = nullptr;
-    entry* sibling = nullptr;
-    entry* prev = nullptr; ///< Parent (first child) or previous sibling.
-    bool scheduled = false;
+    clock::time_point deadline; ///< Service-owned ordering key.
+    std::uint64_t sequence = 0; ///< Service-owned FIFO tie-break.
+    entry* child = nullptr;     ///< Service-owned heap/ready-list linkage.
+    entry* sibling = nullptr;   ///< Service-owned heap/ready-list linkage.
+    entry* prev = nullptr;      ///< Parent (first child) or previous sibling.
+    bool scheduled = false;     ///< Service-owned pending flag.
 };
 
 namespace detail {

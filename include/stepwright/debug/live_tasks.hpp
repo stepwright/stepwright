@@ -49,8 +49,8 @@ constexpr const char* to_string(task_state state) noexcept {
 
 /// Snapshot of one live machine. Strings have static storage duration.
 struct live_task {
-    const char* type_name = nullptr; ///< The machine's type (D).
-    task_state state = task_state::running;
+    const char* type_name = nullptr;        ///< The machine's type (D).
+    task_state state = task_state::running; ///< Momentary driver state.
     /// The step it will resume at (for example "&my_op::on_reply"), or nullptr
     /// while running or when it finishes with a forwarded child.
     const char* resume_step = nullptr;

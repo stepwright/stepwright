@@ -21,20 +21,20 @@ namespace stepwright {
 struct step {
     /// Transition opcode, interpreted only by the owning driver.
     enum class kind : std::uint8_t {
-        finish,
-        next,
-        child,
-        park,
-        defer
+        finish, ///< Deliver the terminal result.
+        next,   ///< Invoke the next local step.
+        child,  ///< Await the child task.
+        park,   ///< Await an external wake.
+        defer   ///< Resume through the home executor.
     };
-    using call_type = step (*)(void*, const error&) noexcept; // Static step thunk.
-    kind action = kind::finish;
-    call_type call = nullptr;
-    void (*resume)(work_item*) noexcept = nullptr;
-    task* child = nullptr;
-    error result;
+    using call_type = step (*)(void*, const error&) noexcept; ///< Static step thunk.
+    kind action = kind::finish;                               ///< Driver opcode.
+    call_type call = nullptr;                                 ///< Next local step.
+    void (*resume)(work_item*) noexcept = nullptr;            ///< Asynchronous resume thunk.
+    task* child = nullptr;                                    ///< Borrowed child, for child opcode.
+    error result;                                             ///< Terminal error (empty = success).
 #if STEPWRIGHT_TRACK_TASKS
-    const char* name = nullptr; // step to resume at (live task registry only)
+    const char* name = nullptr; ///< Static resume-step name (tracking builds only).
 #endif
 };
 
@@ -255,7 +255,7 @@ private:
 #endif
         // Idle here: finish() disarmed whatever the previous run registered. The
         // default hook only acts on a park, so it registers at the first park
-        // (see docs/M5-performance.md); a custom hook registers now.
+        // (see docs/design/performance.md); a custom hook registers now.
         cancellation_.bind(std::move(token), &cancel, this);
         registered_ = has_cancel_hook() && cancellation_.token().can_be_cancelled();
         if (registered_) {

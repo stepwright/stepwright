@@ -6,7 +6,7 @@
 #include <utility>
 
 namespace stepwright::detail {
-// Task base of the M2 waiters (event/shared_task waiters, mutex lock operations,
+// Task base of the primitive waiters (event/shared_task waiters, mutex lock operations,
 // delay). The completion protocol itself lives in wait_core (see there): the
 // waiter is published before its cancellation registration is armed, one phase
 // word decides whether the resolver or the starter delivers, and delivery goes

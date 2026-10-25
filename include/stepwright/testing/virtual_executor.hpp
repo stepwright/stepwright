@@ -17,7 +17,7 @@ enum class schedule : std::uint8_t {
 };
 
 /// Deterministic single-threaded executor and timer service on virtual time, for
-/// reproducible concurrency tests (design: docs/M4-runtime.md).
+/// reproducible concurrency tests (design: docs/design/runtime.md).
 ///
 /// - post(), schedule() and cancel() are thread-safe, but items and timer
 ///   callbacks run only inside the run_* calls, on the calling thread. Do not call

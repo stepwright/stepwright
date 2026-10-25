@@ -1,0 +1,31 @@
+PROJECT_NAME           = stepwright
+PROJECT_BRIEF          = "Explicit asynchronous state machines for C++20"
+OUTPUT_DIRECTORY       = build/docs
+INPUT                  = include/stepwright README.md docs examples/README.md benchmarks/README.md \
+                         benchmarks/results CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.md
+# scripts/ci.sh supplies an absolute main-page path so other README.md files
+# are not mistaken for additional main pages.
+EXCLUDE_SYMBOLS        = stepwright::detail stepwright::detail::* std std::*
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS      = NO
+HIDE_UNDOC_CLASSES      = NO
+INHERIT_DOCS           = YES
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION         = YES
+PREDEFINED             = STEPWRIGHT_TRACK_TASKS=1 STEPWRIGHT_DEBUG=1 STEPWRIGHT_ALWAYS_INLINE=inline
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_UNDOC_ENUM_VAL = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = YES
+FULL_PATH_NAMES        = NO
+JAVADOC_AUTOBRIEF       = YES

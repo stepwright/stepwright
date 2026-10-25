@@ -18,10 +18,10 @@ namespace stepwright {
 /// Library error codes; comparable to std::error_code via make_error_code().
 // NOLINTNEXTLINE(performance-enum-size): the public error-code contract specifies int.
 enum class errc : int {
-    cancelled = 1,
-    timed_out,
-    closed,
-    broken_promise
+    cancelled = 1, ///< A cooperative cancellation request won.
+    timed_out,     ///< A deadline expired before the inner operation finished.
+    closed,        ///< A send/publication could not proceed because its target closed.
+    broken_promise ///< A producer abandoned an expected result.
 };
 
 namespace detail {
@@ -202,6 +202,8 @@ private:
 };
 } // namespace stepwright
 
+namespace std {
 template <>
 /// Enable standard implicit error-code conversion for stepwright::errc.
-struct std::is_error_code_enum<stepwright::errc> : std::true_type {};
+struct is_error_code_enum<stepwright::errc> : true_type {};
+} // namespace std

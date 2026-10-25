@@ -21,7 +21,7 @@ struct cancel_invocation {
 };
 // Registrations are spread over independently locked stripes (chosen by node
 // address), so threads arming and disarming on one shared token do not serialize
-// on one lock or one cache line. Design and proofs: docs/M5-performance.md.
+// on one lock or one cache line. Design and measurements: docs/design/performance.md.
 inline constexpr std::size_t cancel_stripes = 8;
 struct alignas(cache_line) cancel_stripe {
     spin_lock lock;
@@ -290,7 +290,7 @@ public:
             return false;
         }
         // A registration that this look at `occupied` misses sees the request
-        // itself and runs inline (see activate and docs/M5-performance.md).
+        // itself and runs inline (see activate and docs/design/performance.md).
         for (auto& stripe : state->stripes) {
             if (!stripe.occupied.load(std::memory_order_seq_cst)) {
                 continue;

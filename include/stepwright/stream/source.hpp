@@ -132,7 +132,7 @@ private:
     state state_;
 };
 
-/// Asynchronous pull stream (the M3 protocol). A single consumer at a time calls
+/// Asynchronous pull stream. A single consumer at a time calls
 /// try_pull() and on_ready() (never concurrently with each other, and not while
 /// its readiness wait is outstanding); producers of concrete sources are
 /// thread-safe as documented per type.

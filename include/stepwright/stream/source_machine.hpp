@@ -23,21 +23,21 @@ namespace stepwright {
 struct source_step {
     /// Transition opcode.
     enum class kind : std::uint8_t {
-        finish,
-        emit,
-        next,
-        child,
-        park,
-        defer
+        finish, ///< Publish end/failure.
+        emit,   ///< Yield one item to the consumer.
+        next,   ///< Invoke the next local step.
+        child,  ///< Await the child task.
+        park,   ///< Await an external wake.
+        defer   ///< Resume through the home executor.
     };
     using call_type = source_step (*)(void*, const error&) noexcept; ///< Static step thunk.
-    kind action = kind::finish;
-    call_type call = nullptr;
-    void (*resume)(work_item*) noexcept = nullptr;
-    task* child = nullptr;
-    error result;
+    kind action = kind::finish;                                      ///< Driver opcode.
+    call_type call = nullptr;                                        ///< Next local step.
+    void (*resume)(work_item*) noexcept = nullptr;                   ///< Asynchronous resume thunk.
+    task* child = nullptr; ///< Borrowed child, for child opcode.
+    error result;          ///< Terminal error (empty = end).
 #if STEPWRIGHT_TRACK_TASKS
-    const char* name = nullptr; // step to resume at (live task registry only)
+    const char* name = nullptr; ///< Static resume-step name (tracking builds only).
 #endif
 };
 
