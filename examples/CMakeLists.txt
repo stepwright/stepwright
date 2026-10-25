@@ -11,7 +11,8 @@ set(STEPWRIGHT_EXAMPLES
     06_broadcast
     07_source_machine
     08_cancellation
-    09_deterministic_testing)
+    09_deterministic_testing
+    10_debugging_hangs)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
@@ -28,3 +29,7 @@ foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
     endif()
 endforeach()
 
+# The hang-hunting example uses the live task registry. Tracking changes class
+# layout, so it is enabled for that one program as a whole (its only translation
+# unit), never mixed with untracked code.
+target_compile_definitions(10_debugging_hangs PRIVATE STEPWRIGHT_TRACK_TASKS=1)
