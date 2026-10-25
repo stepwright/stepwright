@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +22,7 @@ inline constexpr std::size_t pool_line = cache_line;
 } // namespace detail
 
 /// Fixed-size multi-threaded executor with per-worker queues and work stealing
-/// (design and proofs: docs/M4-runtime.md).
+/// (design and proofs: docs/design/runtime.md).
 ///
 /// - post() is thread-safe, never allocates (work items are intrusive) and may be
 ///   called from inside work running on the pool. Posts from a pool thread go to
@@ -30,11 +31,12 @@ inline constexpr std::size_t pool_line = cache_line;
 ///   workers. A worker queue holds 256 items; on overflow its older half moves to
 ///   the injection queue (where any worker, including the owner, takes it).
 /// - Idle workers spin briefly, then sleep. Posting while every worker is busy
-///   costs no system call; a post wakes a sleeper only when no worker is searching
-///   for work and there is work to spare (a worker's single queued item is its own
-///   next item and does not wake anyone).
+///   costs no system call. A timed guard keeps checking while any worker runs
+///   an item, including a single item queued behind a blocked poster. With no work
+///   running all workers sleep. Bigger queues prompt faster parallel ramp-up.
 /// - Items run outside every internal lock and are not touched after run returns.
-///   An item must not block waiting for work it posted to the same pool.
+///   Blocking is discouraged: it consumes a worker and can exhaust the pool if
+///   every worker blocks. Posted work eventually runs whenever a worker is idle.
 /// - shutdown() (also run by the destructor) stops accepting outside work, runs
 ///   everything already posted, including items posted by those items, and joins
 ///   the workers. Posting from outside after shutdown has started is a
@@ -68,7 +70,8 @@ class thread_pool final : public executor {
         std::thread thread;
         // Sleep state.
         alignas(detail::pool_line) std::atomic<std::uint32_t> park{0}; // 1 while asleep
-        bool in_stack = false; // on the sleeper stack (guarded by sleep_mutex_)
+        bool in_stack = false;        // on the sleeper stack (guarded by sleep_mutex_)
+        std::condition_variable wake; // interruptible guard wait, under sleep_mutex_
         // Ring slots [head, tail) modulo ring_capacity hold the queued items.
         alignas(detail::pool_line) std::array<std::atomic<work_item*>, ring_capacity> slots{};
     };
@@ -106,9 +109,10 @@ public:
     void post(work_item& item) noexcept override {
         worker* self = current_worker;
         if (self != nullptr && self->pool == this) {
-            // A single queued item is the poster's own next item: it runs as soon as
-            // the current one returns, so only spare work is worth a wake-up.
-            if (push_local(*self, item) >= 2) {
+            // A timed guard remains available while any worker is running, so a single
+            // item is eventually stolen even if the poster blocks. Larger queues
+            // additionally prompt an immediate wake to ramp up parallelism.
+            if (push_local(*self, item) > 1) {
                 wake_if_needed();
             }
         } else {
@@ -156,7 +160,7 @@ public:
             }
         }
         for (std::size_t i = 0; i < count_; ++i) {
-            workers_[i].park.notify_one();
+            workers_[i].wake.notify_one();
         }
         for (std::size_t i = 0; i < count_; ++i) {
             if (workers_[i].thread.joinable()) {
@@ -172,6 +176,7 @@ private:
     static constexpr std::uint64_t searching_mask = sleeping_one - 1;
     static constexpr unsigned spin_rounds = 10; // cpu_relax rounds: 1, 2, 4, ... 512
     static constexpr unsigned yield_rounds = 10;
+    static constexpr std::chrono::microseconds guard_tick{250}; // active-pool rescan interval
     static constexpr std::uint64_t max_batch = 32;
     static constexpr std::uint32_t fairness_period = 61;
 
@@ -195,9 +200,9 @@ private:
         return ring_capacity - (self.tail.load(std::memory_order_relaxed) -
                                 self.head.load(std::memory_order_acquire));
     }
-    // Owner only. Returns the number of queued items after the push. The post is
-    // counted before the item is published: a thief could otherwise run it, and
-    // wait_idle() count its completion, before its post.
+    // Owner only. Count before publication: a thief may immediately run the item.
+    // A last idle worker cannot sleep indefinitely while another worker runs;
+    // the conditional sleep transition below retains a timed guard.
     std::uint64_t push_local(worker& self, work_item& item) noexcept {
         self.posted.store(self.posted.load(std::memory_order_relaxed) + 1,
                           std::memory_order_release);
@@ -217,7 +222,6 @@ private:
             }
             self.slots[ring_index(t)].store(&item, std::memory_order_relaxed);
             self.tail.store(t + 1, std::memory_order_release);
-            // At least the number queued (more if thieves took some unseen).
             return t + 1 - h;
         }
     }
@@ -421,6 +425,8 @@ private:
 
     // --- idle protocol ----------------------------------------------------------
 
+    // After publication. Timed guards count as sleeping, so ordinary posts can
+    // wake them immediately; a single local item is covered by their rescan.
     void wake_if_needed() noexcept {
         const auto state = idle_.load(std::memory_order_acquire);
         if ((state >> 32U) != 0 && (state & searching_mask) == 0) {
@@ -483,7 +489,7 @@ private:
             target = sleepers_[--sleeper_count_];
             release_sleeper(*target);
         }
-        target->park.notify_one();
+        target->wake.notify_one();
     }
     work_item* search(worker& self) noexcept {
         for (unsigned round = 0; round < spin_rounds + yield_rounds; ++round) {
@@ -515,6 +521,7 @@ private:
                     return item;
                 }
             }
+            bool guarded = false;
             {
                 const std::lock_guard lock(sleep_mutex_);
                 if (stopping_.load(std::memory_order_relaxed)) {
@@ -526,11 +533,25 @@ private:
                     }
                     break;
                 }
+                // Decide timed versus indefinite sleep in the same CAS that
+                // publishes sleeping. Include this worker if it was not searching:
+                // it is between items, not another possibly blocked producer.
+                // This also covers a worker that declined to search, after which
+                // the searcher it saw became busy. A stale "nobody running" load
+                // cannot let every other worker sleep indefinitely behind it.
+                auto state = idle_.load(std::memory_order_relaxed);
+                for (;;) {
+                    const auto away = (state >> 32U) + (state & searching_mask);
+                    guarded = away + (searching ? 0U : 1U) < count_;
+                    if (idle_.compare_exchange_weak(
+                            state, state + sleeping_one - (searching ? searching_one : 0),
+                            std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                        break;
+                    }
+                }
                 sleepers_[sleeper_count_++] = &self;
                 self.in_stack = true;
                 self.park.store(1, std::memory_order_relaxed);
-                idle_.fetch_add(sleeping_one - (searching ? searching_one : 0),
-                                std::memory_order_acq_rel);
                 if (idle_waiters_ != 0) {
                     idle_cv_.notify_all();
                 }
@@ -555,10 +576,29 @@ private:
                 }
                 return item;
             }
-            while (self.park.load(std::memory_order_acquire) != 0) {
-                self.park.wait(1, std::memory_order_acquire);
+            {
+                std::unique_lock lock(sleep_mutex_);
+                const auto released = [&self] {
+                    return self.park.load(std::memory_order_acquire) == 0;
+                };
+                if (guarded) {
+                    self.wake.wait_for(lock, guard_tick, released);
+                } else {
+                    self.wake.wait(lock, released);
+                }
+                if (released()) {
+                    searching = true; // wake_one() or shutdown() transferred the count
+                    continue;
+                }
+                // Timeout, still on the sleeper stack: become an uncounted awake
+                // worker again, then rescan without holding the sleeper mutex.
+                remove_sleeper(self);
             }
-            searching = true; // released by wake_one() or shutdown()
+            if (work_item* item = scan(self)) {
+                wake_reliably(); // hand over any remaining/moved work before running
+                return item;
+            }
+            searching = start_searching();
         }
         // Stopping: one last complete scan; nothing left means this worker is done.
         work_item* item = scan(self);

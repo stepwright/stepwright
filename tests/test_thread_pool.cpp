@@ -5,6 +5,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <sys/resource.h>
@@ -393,7 +395,7 @@ TEST(thread_pool, bound_machines_continue_on_the_pool) {
     }
 }
 
-// Regression (found in M5 by test_alloc_m4's warm-up, present since M4): items
+// Regression (found by the warm-up of test_alloc_runtime): items
 // posted from outside that each wait until all of them run. An injected batch
 // moved into the ring of a worker that then blocks, or a sleeper's rescan that
 // took one item and ended the last search without handing it over, left an
@@ -429,4 +431,147 @@ TEST(thread_pool, regression_outside_items_never_wait_behind_a_blocked_worker) {
         }
     }
     EXPECT_EQ(hangs, 0);
+}
+
+namespace {
+// Liveness probe: a group of `n` items, each of which blocks until all `n` have
+// started. With `n` workers every item needs its own worker, so the group completes
+// exactly when no posted item waits behind a blocked one while a worker is idle.
+// Every wait has a deadline: a lost wake-up fails the test instead of hanging it.
+struct rendezvous {
+    explicit rendezvous(std::size_t members) : n(members) {}
+    // Count this item as started and wait for the others (or give up).
+    void arrive_and_wait() {
+        started.fetch_add(1, std::memory_order_acq_rel);
+        while (started.load(std::memory_order_acquire) < n &&
+               !give_up.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        finished.fetch_add(1, std::memory_order_acq_rel);
+    }
+    // Wait for the group; on timeout release the blocked items and report false.
+    bool wait_for_group(std::chrono::seconds limit) {
+        const auto deadline = std::chrono::steady_clock::now() + limit;
+        while (finished.load(std::memory_order_acquire) < n) {
+            if (std::chrono::steady_clock::now() > deadline) {
+                give_up.store(true, std::memory_order_release);
+                const auto drain_limit = std::chrono::steady_clock::now() + 5s;
+                while (finished.load(std::memory_order_acquire) < n) {
+                    if (std::chrono::steady_clock::now() > drain_limit) {
+                        // Even a broken pool must fail boundedly, not hang while
+                        // unwinding/destroying tasks still referring to this group.
+                        std::fputs("pool liveness: timed out draining released items\n", stderr);
+                        std::abort();
+                    }
+                    std::this_thread::yield();
+                }
+                return false;
+            }
+            std::this_thread::yield();
+        }
+        return true;
+    }
+    std::size_t n;
+    std::atomic<std::size_t> started{0};
+    std::atomic<std::size_t> finished{0};
+    std::atomic<bool> give_up{false};
+};
+
+enum class shape : std::uint8_t {
+    outside,
+    inside,
+    burst
+};
+
+// One round of the given shape on `pool` (which has `n` workers).
+bool liveness_round(stepwright::thread_pool& pool, std::size_t n, shape which) {
+    rendezvous group(n);
+    std::atomic<int> trivial_done{0};
+    constexpr int burst_size = 512;
+    switch (which) {
+        case shape::outside:
+            // n blocking items posted from outside.
+            for (std::size_t i = 0; i < n; ++i) {
+                pool.post([&group] { group.arrive_and_wait(); });
+            }
+            break;
+        case shape::inside:
+            // One item posts the other n - 1 from a worker and then blocks itself: the
+            // poster cannot be relied on to run what it posted.
+            pool.post([&pool, &group, n] {
+                for (std::size_t i = 1; i < n; ++i) {
+                    pool.post([&group] { group.arrive_and_wait(); });
+                }
+                group.arrive_and_wait();
+            });
+            break;
+        case shape::burst:
+            // A burst of trivial items (injection batches move into worker rings),
+            // followed by the blocking group.
+            for (int i = 0; i < burst_size; ++i) {
+                pool.post(
+                    [&trivial_done] { trivial_done.fetch_add(1, std::memory_order_relaxed); });
+            }
+            for (std::size_t i = 0; i < n; ++i) {
+                pool.post([&group] { group.arrive_and_wait(); });
+            }
+            break;
+    }
+    const bool group_ok = group.wait_for_group(20s);
+    pool.wait_idle(); // nothing may still refer to this frame
+    return group_ok && (which != shape::burst || trivial_done.load() == burst_size);
+}
+
+void run_liveness(shape which) {
+    const int rounds = test_support::stress_iterations(150);
+    for (const std::size_t n : {std::size_t{2}, std::size_t{3}, std::size_t{4}, std::size_t{8}}) {
+        stepwright::thread_pool pool(n);
+        for (int round = 0; round < rounds; ++round) {
+            // Let the workers fall asleep between rounds (varying how long), so
+            // that posts meet sleepers, searchers and half-asleep workers alike.
+            if (round % 3 == 0) {
+                std::this_thread::sleep_for(std::chrono::microseconds(round % 200));
+            }
+            if (!liveness_round(pool, n, which)) {
+                FAIL() << "pool item waited behind a blocked item: workers=" << n
+                       << " round=" << round;
+            }
+        }
+    }
+}
+} // namespace
+
+// Regression: a worker's single posted item used to wake nobody, so a poster that
+// then blocked until the item had started hung the pool while other workers slept.
+// The three shapes below are the pool-liveness probe: the posters are outside
+// threads, a worker that blocks right after posting, and a worker whose items were
+// moved into rings in batches.
+TEST(thread_pool, regression_liveness_items_posted_from_outside) {
+    run_liveness(shape::outside);
+}
+
+TEST(thread_pool, regression_liveness_items_posted_by_a_blocking_worker) {
+    run_liveness(shape::inside);
+}
+
+TEST(thread_pool, regression_liveness_items_behind_an_injection_burst) {
+    run_liveness(shape::burst);
+}
+
+// Mixed: all three shapes interleaved on one pool per size, with idle gaps.
+TEST(thread_pool, regression_liveness_shapes_interleaved) {
+    const int rounds = test_support::stress_iterations(300);
+    for (const std::size_t n : {std::size_t{2}, std::size_t{4}, std::size_t{8}}) {
+        stepwright::thread_pool pool(n);
+        for (int round = 0; round < rounds; ++round) {
+            if (round % 3 == 0) {
+                std::this_thread::sleep_for(std::chrono::microseconds(round % 200));
+            }
+            const auto which = static_cast<shape>(round % 3);
+            if (!liveness_round(pool, n, which)) {
+                FAIL() << "pool item waited behind a blocked item: workers=" << n
+                       << " round=" << round << " shape=" << round % 3;
+            }
+        }
+    }
 }
