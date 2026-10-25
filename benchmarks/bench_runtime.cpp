@@ -252,12 +252,32 @@ struct launcher : stepwright::machine<launcher> {
     step go() { return forward(*target); }
 };
 
+// About 1 us of CPU work on an Apple M4 Max: a dependent chain of multiply-adds
+// that the compiler cannot shorten (BM_leaf_work reports the cost on the machine).
+constexpr int work_rounds = 600;
+std::uint64_t leaf_work(std::uint64_t seed) noexcept {
+    for (int i = 0; i < work_rounds; ++i) {
+        seed = seed * 6364136223846793005ULL + 1442695040888963407ULL;
+        benchmark::DoNotOptimize(seed);
+    }
+    return seed;
+}
+struct working_leaf : stepwright::machine<working_leaf> {
+    std::uint64_t value = 0;
+    step begin() { return defer<&working_leaf::work>(); }
+    step work() {
+        value = leaf_work(value);
+        return done();
+    }
+};
+
 // when_all_range of `count` machines bound to the pool, started from a worker; each
-// machine defers once. Per machine.
+// machine defers once (and then does Leaf's work). Per machine.
+template <class Leaf>
 void fan_out_fan_in(benchmark::State& state, std::size_t threads) {
     const auto count = static_cast<std::size_t>(state.range(0));
     stepwright::thread_pool pool(threads);
-    std::vector<leaf> leaves(count);
+    std::vector<Leaf> leaves(count);
     std::vector<stepwright::task*> children;
     for (auto& l : leaves) {
         l.bind(pool);
@@ -276,11 +296,27 @@ void fan_out_fan_in(benchmark::State& state, std::size_t threads) {
     state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(count));
 }
 void BM_pool_fan_out_fan_in(benchmark::State& state) {
-    fan_out_fan_in(state, 8);
+    fan_out_fan_in<leaf>(state, 8);
 }
 // Reference: the same work on one worker (no stealing, no contention).
 void BM_pool_fan_out_fan_in_one_thread(benchmark::State& state) {
-    fan_out_fan_in(state, 1);
+    fan_out_fan_in<leaf>(state, 1);
+}
+// The same with about 1 us of work per leaf, on 8 workers and on one.
+void BM_pool_fan_out_fan_in_work(benchmark::State& state) {
+    fan_out_fan_in<working_leaf>(state, 8);
+}
+void BM_pool_fan_out_fan_in_work_one_thread(benchmark::State& state) {
+    fan_out_fan_in<working_leaf>(state, 1);
+}
+// The leaf's work alone, on the calling thread.
+void BM_leaf_work(benchmark::State& state) {
+    std::uint64_t value = 0;
+    for (auto _ : state) {
+        value = leaf_work(value);
+    }
+    benchmark::DoNotOptimize(value);
+    state.SetItemsProcessed(state.iterations());
 }
 
 // --- virtual executor ---------------------------------------------------------------
@@ -306,4 +342,7 @@ BENCHMARK(BM_baseline_pool_post_from_worker)->Arg(8)->UseRealTime();
 BENCHMARK(BM_pool_ping_pong)->UseRealTime();
 BENCHMARK(BM_pool_fan_out_fan_in)->Arg(10'000)->UseRealTime();
 BENCHMARK(BM_pool_fan_out_fan_in_one_thread)->Arg(10'000)->UseRealTime();
+BENCHMARK(BM_pool_fan_out_fan_in_work)->Arg(10'000)->UseRealTime();
+BENCHMARK(BM_pool_fan_out_fan_in_work_one_thread)->Arg(10'000)->UseRealTime();
+BENCHMARK(BM_leaf_work);
 BENCHMARK(BM_virtual_executor_post_run);
