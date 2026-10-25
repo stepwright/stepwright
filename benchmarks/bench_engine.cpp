@@ -220,7 +220,14 @@ struct coro_task {
             return ::operator new(size);
         }
         static void operator delete(void* frame, std::size_t size) noexcept {
+#if defined(__cpp_sized_deallocation) && __cpp_sized_deallocation >= 201309L
             ::operator delete(frame, size);
+#else
+            // Clang 18 does not enable sized deallocation by default. Keep this
+            // baseline valid without changing the consumer's compiler flags.
+            static_cast<void>(size);
+            ::operator delete(frame);
+#endif
         }
         coro_task get_return_object() noexcept {
             return coro_task{std::coroutine_handle<promise_type>::from_promise(*this)};
