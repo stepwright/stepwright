@@ -26,6 +26,7 @@ endforeach()
 stepwright_add_test(test_cancel_scaling)
 include(guide_snippets.cmake)
 find_program(STEPWRIGHT_PYTHON NAMES python3 REQUIRED)
+add_test(NAME test_release_notes COMMAND ${STEPWRIGHT_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_release_notes.py)
 add_test(NAME test_forbidden COMMAND ${STEPWRIGHT_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_forbidden.py
     ${CMAKE_CURRENT_BINARY_DIR}/forbidden-scratch)
 # The registry test tracks tasks in its own executable only: every stepwright

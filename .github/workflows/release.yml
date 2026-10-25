@@ -1,0 +1,68 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Release gate / ${{ matrix.os }} / ${{ matrix.compiler }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, compiler: gcc}
+          - {os: ubuntu-24.04, compiler: clang}
+          - {os: macos-latest, compiler: native}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/dev-image
+        if: runner.os == 'Linux'
+      - name: Linux tests and consumers
+        if: runner.os == 'Linux'
+        env:
+          COMPILER: ${{ matrix.compiler }}
+        run: make docker-test docker-consumer
+      - name: macOS tests and consumers
+        if: runner.os == 'macOS'
+        run: make test consumer
+
+  publish:
+    needs: tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag version and extract release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          python3 scripts/release_notes.py "$VERSION" > release-notes.md
+          # The gated container/macOS configurations already checked project/header
+          # agreement. Publishing needs only the tag check, not a host Linux build.
+          python3 - "$VERSION" <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path('include/stepwright/version.hpp').read_text()
+          actual = '.'.join(re.search(r'#define STEPWRIGHT_VERSION_' + p + r' (\d+)', text)[1]
+                            for p in ('MAJOR', 'MINOR', 'PATCH'))
+          if actual != sys.argv[1]:
+              sys.exit('tag does not match the configured/header version')
+          PY
+      - name: Create deterministic source archive and checksum
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          git archive --format=tar --prefix="stepwright-${VERSION}/" HEAD | gzip -n > "stepwright-${VERSION}.tar.gz"
+          sha256sum "stepwright-${VERSION}.tar.gz" > "stepwright-${VERSION}.tar.gz.sha256"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" stepwright-*.tar.gz stepwright-*.tar.gz.sha256 --verify-tag --title "$TAG" --notes-file release-notes.md
