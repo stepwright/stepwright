@@ -5,11 +5,12 @@ stepwright is a header-only C++20 library for writing asynchronous operations as
 explicit state machines: each step is a member function that returns the next
 transition (`done`, `fail`, `then`, `after`, `forward`, `park`, `defer`).
 Start with `docs/overview.md` (purpose, design principles, architecture,
-roadmap). Milestone specifications live in `.claude/plans/spec-*.md`.
+roadmap), then `docs/guide.md` and `docs/design/` for the implementation protocols.
 
 ## Supported platforms
-macOS (AppleClang, native) and Linux (GCC 14, Clang 20 with libstdc++ or
-libc++; x86-64 and arm64). Windows is not supported.
+macOS (AppleClang 16 or newer, native) and Linux (GCC 13 or newer,
+Clang 18 or newer; libstdc++ or libc++; x86-64 and arm64). The dev image
+also tests GCC 14 and Clang 20. Windows is not supported.
 
 ## Build and test
 Linux always runs in the pinned dev container (`docker/Dockerfile`); macOS
@@ -36,6 +37,9 @@ make format-check
 make tidy          # clang-tidy 20
 make cppcheck
 make coverage
+make docs          # Doxygen HTML, warnings are errors (container)
+make consumer      # native install/FetchContent/add_subdirectory consumers
+make docker-consumer
 ```
 Container build trees live in the Docker volume `stepwright-build-<platform>`
 (`make docker-clean` deletes it); native build trees live in `build/`.
@@ -51,14 +55,11 @@ builds, tests, ASan and UBSan work, but ThreadSanitizer cannot start there
 (the emulator rejects the address-randomization change TSan needs). x86-64
 TSan runs on native x86-64 CI runners.
 
-## Independent-implementation rules (mandatory)
-- Implement from the specifications and public documentation only. Do not read,
-  copy, paraphrase or consult any proprietary or third-party codebase whose
-  license does not permit it, and do not reuse code from earlier private
-  prototypes of this project.
-- Public prior art (papers, standard proposals, open-source projects with
-  compatible licenses) may inform designs; record it in `docs/provenance.md`.
-- Every change that adds a component appends an entry to `docs/provenance.md`.
+## Contribution policy
+- Contribute only code you wrote or have the right to contribute under MIT.
+- Cite public prior art (papers, standards proposals and open-source designs)
+  in `docs/provenance.md` when adding or redesigning a component.
+- Sign off contributions with `git commit -s` (DCO); see `CONTRIBUTING.md`.
 
 ## Engineering rules
 - Never start a child task, fire a completion, or invoke user callbacks while
