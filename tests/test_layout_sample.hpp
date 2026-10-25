@@ -12,9 +12,9 @@ struct layout_sample : stepwright::machine<layout_sample> {
 std::size_t ndebug_size();
 std::size_t ndebug_align();
 
-// Every public M2 type, measured in both the Debug-checks and NDEBUG TUs.
+// Primitive types, measured in both the Debug-checks and NDEBUG TUs.
 using sample_fn = void (*)(const stepwright::completion&, const stepwright::cancel_token&);
-#define STEPWRIGHT_M2_LAYOUT_TYPES(X)                                                              \
+#define STEPWRIGHT_PRIMITIVE_LAYOUT_TYPES(X)                                                       \
     X(stepwright::event)                                                                           \
     X(stepwright::event::waiter)                                                                   \
     X(stepwright::shared_task)                                                                     \
@@ -42,18 +42,18 @@ using sample_fn = void (*)(const stepwright::completion&, const stepwright::canc
     X(stepwright::finally_task)                                                                    \
     X(stepwright::reschedule)
 
-#define STEPWRIGHT_M2_LAYOUT_COUNT(T) +1
-inline constexpr std::size_t m2_layout_count =
-    0 STEPWRIGHT_M2_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_COUNT);
-using m2_layout = std::array<std::pair<std::size_t, std::size_t>, m2_layout_count>;
-#define STEPWRIGHT_M2_LAYOUT_ENTRY(T) std::pair<std::size_t, std::size_t>{sizeof(T), alignof(T)},
-#define STEPWRIGHT_M2_LAYOUT_NAME(T) #T,
-inline m2_layout measure_m2_layout() {
-    return m2_layout{STEPWRIGHT_M2_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
+#define STEPWRIGHT_LAYOUT_COUNT(T) +1
+inline constexpr std::size_t primitive_layout_count =
+    0 STEPWRIGHT_PRIMITIVE_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_COUNT);
+using primitive_layout = std::array<std::pair<std::size_t, std::size_t>, primitive_layout_count>;
+#define STEPWRIGHT_LAYOUT_ENTRY(T) std::pair<std::size_t, std::size_t>{sizeof(T), alignof(T)},
+#define STEPWRIGHT_LAYOUT_NAME(T) #T,
+inline primitive_layout measure_primitive_layout() {
+    return primitive_layout{STEPWRIGHT_PRIMITIVE_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_ENTRY)};
 }
-m2_layout ndebug_m2_layout();
+primitive_layout ndebug_primitive_layout();
 
-// Every public M3 type (aliases keep template commas out of the macro).
+// Stream types (aliases keep template commas out of the macro).
 struct layout_source : stepwright::source_machine<layout_source, int> {
     step begin();
 };
@@ -65,7 +65,7 @@ using layout_item_fn = std::optional<int> (*)();
 using layout_generate = stepwright::generate_source<layout_item_fn>;
 using layout_each_fn = void (*)(int&&);
 using layout_for_each = stepwright::for_each_op<int, layout_each_fn>;
-#define STEPWRIGHT_M3_LAYOUT_TYPES(X)                                                              \
+#define STEPWRIGHT_STREAM_LAYOUT_TYPES(X)                                                          \
     X(stepwright::pull<int>)                                                                       \
     X(stepwright::source<int>::ready_op)                                                           \
     X(layout_source)                                                                               \
@@ -84,24 +84,24 @@ using layout_for_each = stepwright::for_each_op<int, layout_each_fn>;
     X(stepwright::interval_source)                                                                 \
     X(layout_for_each)
 
-inline constexpr std::size_t m3_layout_count =
-    0 STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_COUNT);
-using m3_layout = std::array<std::pair<std::size_t, std::size_t>, m3_layout_count>;
-inline m3_layout measure_m3_layout() {
-    return m3_layout{STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
+inline constexpr std::size_t stream_layout_count =
+    0 STEPWRIGHT_STREAM_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_COUNT);
+using stream_layout = std::array<std::pair<std::size_t, std::size_t>, stream_layout_count>;
+inline stream_layout measure_stream_layout() {
+    return stream_layout{STEPWRIGHT_STREAM_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_ENTRY)};
 }
-m3_layout ndebug_m3_layout();
+stream_layout ndebug_stream_layout();
 
-// Every public M4 type.
-#define STEPWRIGHT_M4_LAYOUT_TYPES(X)                                                              \
+// Runtime types.
+#define STEPWRIGHT_RUNTIME_LAYOUT_TYPES(X)                                                         \
     X(stepwright::thread_pool)                                                                     \
     X(stepwright::testing::virtual_executor)                                                       \
     X(stepwright::testing::schedule)
 
-inline constexpr std::size_t m4_layout_count =
-    0 STEPWRIGHT_M4_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_COUNT);
-using m4_layout = std::array<std::pair<std::size_t, std::size_t>, m4_layout_count>;
-inline m4_layout measure_m4_layout() {
-    return m4_layout{STEPWRIGHT_M4_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_ENTRY)};
+inline constexpr std::size_t runtime_layout_count =
+    0 STEPWRIGHT_RUNTIME_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_COUNT);
+using runtime_layout = std::array<std::pair<std::size_t, std::size_t>, runtime_layout_count>;
+inline runtime_layout measure_runtime_layout() {
+    return runtime_layout{STEPWRIGHT_RUNTIME_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_ENTRY)};
 }
-m4_layout ndebug_m4_layout();
+runtime_layout ndebug_runtime_layout();

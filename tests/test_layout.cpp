@@ -21,32 +21,32 @@ TEST(machine, regression_layout_ndebug) {
               << " task=" << sizeof(stepwright::task) << " step=" << sizeof(stepwright::step)
               << " manual_executor=" << sizeof(stepwright::manual_executor) << '\n';
 }
-TEST(layout, regression_m2_layout_ndebug) {
-    const auto debug = measure_m2_layout();
-    const auto release = ndebug_m2_layout();
-    const std::array<const char*, m2_layout_count> names{
-        STEPWRIGHT_M2_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_NAME)};
-    for (std::size_t i = 0; i < m2_layout_count; ++i) {
+TEST(layout, regression_primitive_layout_ndebug) {
+    const auto debug = measure_primitive_layout();
+    const auto release = ndebug_primitive_layout();
+    const std::array<const char*, primitive_layout_count> names{
+        STEPWRIGHT_PRIMITIVE_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_NAME)};
+    for (std::size_t i = 0; i < primitive_layout_count; ++i) {
         EXPECT_EQ(debug[i], release[i]) << names[i];
         std::cout << names[i] << " size=" << debug[i].first << " align=" << debug[i].second << '\n';
     }
 }
-TEST(layout, regression_m3_layout_ndebug) {
-    const auto debug = measure_m3_layout();
-    const auto release = ndebug_m3_layout();
-    const std::array<const char*, m3_layout_count> names{
-        STEPWRIGHT_M3_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_NAME)};
-    for (std::size_t i = 0; i < m3_layout_count; ++i) {
+TEST(layout, regression_stream_layout_ndebug) {
+    const auto debug = measure_stream_layout();
+    const auto release = ndebug_stream_layout();
+    const std::array<const char*, stream_layout_count> names{
+        STEPWRIGHT_STREAM_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_NAME)};
+    for (std::size_t i = 0; i < stream_layout_count; ++i) {
         EXPECT_EQ(debug[i], release[i]) << names[i];
         std::cout << names[i] << " size=" << debug[i].first << " align=" << debug[i].second << '\n';
     }
 }
-TEST(layout, regression_m4_layout_ndebug) {
-    const auto debug = measure_m4_layout();
-    const auto release = ndebug_m4_layout();
-    const std::array<const char*, m4_layout_count> names{
-        STEPWRIGHT_M4_LAYOUT_TYPES(STEPWRIGHT_M2_LAYOUT_NAME)};
-    for (std::size_t i = 0; i < m4_layout_count; ++i) {
+TEST(layout, regression_runtime_layout_ndebug) {
+    const auto debug = measure_runtime_layout();
+    const auto release = ndebug_runtime_layout();
+    const std::array<const char*, runtime_layout_count> names{
+        STEPWRIGHT_RUNTIME_LAYOUT_TYPES(STEPWRIGHT_LAYOUT_NAME)};
+    for (std::size_t i = 0; i < runtime_layout_count; ++i) {
         EXPECT_EQ(debug[i], release[i]) << names[i];
         std::cout << names[i] << " size=" << debug[i].first << " align=" << debug[i].second << '\n';
     }

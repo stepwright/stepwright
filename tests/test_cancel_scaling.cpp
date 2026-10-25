@@ -1,5 +1,5 @@
-// M5: the striped cancellation state under contention, and the lazy registration
-// of machines (docs/M5-performance.md).
+// Striped cancellation state under contention, and lazy machine registration
+// (docs/design/performance.md).
 #include <stepwright/stepwright.hpp>
 
 #include <gtest/gtest.h>

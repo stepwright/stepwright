@@ -6,12 +6,12 @@ std::size_t ndebug_size() {
 std::size_t ndebug_align() {
     return alignof(layout_sample);
 }
-m2_layout ndebug_m2_layout() {
-    return measure_m2_layout();
+primitive_layout ndebug_primitive_layout() {
+    return measure_primitive_layout();
 }
-m3_layout ndebug_m3_layout() {
-    return measure_m3_layout();
+stream_layout ndebug_stream_layout() {
+    return measure_stream_layout();
 }
-m4_layout ndebug_m4_layout() {
-    return measure_m4_layout();
+runtime_layout ndebug_runtime_layout() {
+    return measure_runtime_layout();
 }

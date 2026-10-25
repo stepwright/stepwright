@@ -16,7 +16,7 @@
 namespace {
 template <class S>
 concept publicly_resettable = requires(S& source) { source.reset(); };
-// Rearming is internal to the library's combinators (spec M3 §0.1).
+// Rearming is internal to the library's combinators.
 void reset(stepwright::cancel_source& source) noexcept {
     stepwright::detail::cancel_source_access::reset(source);
 }

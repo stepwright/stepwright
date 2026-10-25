@@ -255,7 +255,7 @@ TEST(when_all, regression_parent_cancel_vs_completion_race) {
     std::printf("cancelled %d of %d\n", cancelled, iterations);
 }
 
-// M5: a when_all_range of 64 or more children counts completions in shards.
+// A when_all_range of 64 or more children counts completions in shards.
 // Children bound to a pool complete on many threads; the first failure, the
 // cancelled parent and success are all reported, never before the last child.
 TEST(when_all, regression_sharded_completion_on_a_pool) {

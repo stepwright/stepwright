@@ -73,7 +73,7 @@ void expect_steady_state_zero_alloc(F&& fn, long expected) {
 }
 } // namespace
 
-TEST(alloc_m4, regression_zero_alloc_thread_pool_posts) {
+TEST(alloc_runtime, regression_zero_alloc_thread_pool_posts) {
     stepwright::thread_pool pool(4);
     start_all_workers(pool);
     std::array<chain, 64> chains;
@@ -93,7 +93,7 @@ TEST(alloc_m4, regression_zero_alloc_thread_pool_posts) {
         6400);
 }
 
-TEST(alloc_m4, regression_zero_alloc_machines_bound_to_pool) {
+TEST(alloc_runtime, regression_zero_alloc_machines_bound_to_pool) {
     stepwright::thread_pool pool(4);
     start_all_workers(pool);
     std::array<std::optional<hopper>, 16> machines;
@@ -119,7 +119,7 @@ TEST(alloc_m4, regression_zero_alloc_machines_bound_to_pool) {
         16);
 }
 
-TEST(alloc_m4, regression_zero_alloc_virtual_executor) {
+TEST(alloc_runtime, regression_zero_alloc_virtual_executor) {
     stepwright::testing::virtual_executor fifo;
     stepwright::testing::virtual_executor random(stepwright::testing::schedule::random, 42);
     for (stepwright::testing::virtual_executor* ex : {&fifo, &random}) {
@@ -148,7 +148,7 @@ TEST(alloc_m4, regression_zero_alloc_virtual_executor) {
     }
 }
 
-TEST(alloc_m4, regression_cancelled_error_allocates_once) {
+TEST(alloc_runtime, regression_cancelled_error_allocates_once) {
     const stepwright::error& first = stepwright::detail::cancelled_error();
     EXPECT_EQ(count_allocations([&] {
                   for (int i = 0; i < 100; ++i) {

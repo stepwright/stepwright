@@ -20,7 +20,7 @@ void expect_steady_state_zero_alloc(F&& fn, int expected) {
 }
 } // namespace
 
-TEST(alloc_m2, regression_zero_alloc_event_wait_set) {
+TEST(alloc_primitives, regression_zero_alloc_event_wait_set) {
     stepwright::event ev;
     auto early = ev.wait();
     auto late = ev.wait();
@@ -40,7 +40,7 @@ TEST(alloc_m2, regression_zero_alloc_event_wait_set) {
     }
 }
 
-TEST(alloc_m2, regression_zero_alloc_mutex_lock_unlock) {
+TEST(alloc_primitives, regression_zero_alloc_mutex_lock_unlock) {
     stepwright::async_mutex m;
     auto first = m.lock();
     auto second = m.lock();
@@ -74,7 +74,7 @@ TEST(alloc_m2, regression_zero_alloc_mutex_lock_unlock) {
         2);
 }
 
-TEST(alloc_m2, regression_zero_alloc_when_all_when_any) {
+TEST(alloc_primitives, regression_zero_alloc_when_all_when_any) {
     test_support::sync_child a;
     test_support::sync_child b;
     test_support::async_child c;
@@ -96,9 +96,9 @@ TEST(alloc_m2, regression_zero_alloc_when_all_when_any) {
     }
 }
 
-// M5: a large when_all_range allocates its completion shards once, at
+// A large when_all_range allocates its completion shards once, at
 // construction; runs allocate nothing.
-TEST(alloc_m2, regression_zero_alloc_sharded_when_all_range) {
+TEST(alloc_primitives, regression_zero_alloc_sharded_when_all_range) {
     std::vector<test_support::sync_child> sync(100);
     std::vector<test_support::async_child> async(4);
     std::vector<stepwright::task*> children;
@@ -128,7 +128,7 @@ TEST(alloc_m2, regression_zero_alloc_sharded_when_all_range) {
     }
 }
 
-TEST(alloc_m2, regression_zero_alloc_timers) {
+TEST(alloc_primitives, regression_zero_alloc_timers) {
     stepwright::testing::manual_timer_service manual;
     stepwright::steady_timer_service steady;
     struct noop : stepwright::timer_service::entry {
@@ -147,7 +147,7 @@ TEST(alloc_m2, regression_zero_alloc_timers) {
     }
 }
 
-TEST(alloc_m2, regression_zero_alloc_delay_and_with_deadline) {
+TEST(alloc_primitives, regression_zero_alloc_delay_and_with_deadline) {
     stepwright::testing::manual_timer_service timers;
     stepwright::delay sleep(timers, 5ms);
     test_support::async_child inner;
@@ -168,7 +168,7 @@ TEST(alloc_m2, regression_zero_alloc_delay_and_with_deadline) {
     }
 }
 
-TEST(alloc_m2, regression_zero_alloc_shared_task_and_adapters) {
+TEST(alloc_primitives, regression_zero_alloc_shared_task_and_adapters) {
     test_support::async_child inner;
     stepwright::shared_task shared(inner);
     auto w1 = shared.wait();

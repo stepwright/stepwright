@@ -1,5 +1,5 @@
-// Real multi-threaded workloads combining M1-M3 on a thread_pool, with every
-// machine bound to the pool (spec M4 §5).
+// Real multi-threaded workloads combining primitives and streams on a thread_pool,
+// with every machine bound to the pool.
 #include <gtest/gtest.h>
 
 #include "test_support.hpp"

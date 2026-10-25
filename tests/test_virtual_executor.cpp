@@ -190,7 +190,7 @@ TEST(virtual_executor, interval_ticks_on_virtual_time) {
 }
 
 TEST(virtual_executor, regression_merge_no_head_of_line_blocking) {
-    // The M3 merge head-of-line case on virtual time: a 10 s and a 1 s interval
+    // The merge head-of-line case on virtual time: a 10 s and a 1 s interval
     // produce items at 1 s and 2 s, not after the slow input's first tick.
     virtual_executor ex;
     auto slow = stepwright::interval(ex, 10s);

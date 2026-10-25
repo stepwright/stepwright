@@ -31,7 +31,7 @@ struct with_child : stepwright::source_machine<with_child, int> {
 };
 } // namespace
 
-TEST(alloc_m3, regression_zero_alloc_channel) {
+TEST(alloc_streams, regression_zero_alloc_channel) {
     stepwright::channel<int> bounded(4);
     stepwright::cancel_source source;
     for (const auto& token : {stepwright::cancel_token{}, source.token()}) {
@@ -81,7 +81,7 @@ TEST(alloc_m3, regression_zero_alloc_channel) {
         499500);
 }
 
-TEST(alloc_m3, regression_zero_alloc_readiness_cancellation) {
+TEST(alloc_streams, regression_zero_alloc_readiness_cancellation) {
     stepwright::channel<int> ch;
     std::array<stepwright::cancel_source, 2> sources;
     std::size_t index = 0;
@@ -100,7 +100,7 @@ TEST(alloc_m3, regression_zero_alloc_readiness_cancellation) {
     EXPECT_EQ(result, 1);
 }
 
-TEST(alloc_m3, regression_zero_alloc_merge) {
+TEST(alloc_streams, regression_zero_alloc_merge) {
     stepwright::channel<int> a;
     stepwright::channel<int> b;
     auto always = stepwright::generate([]() -> std::optional<int> { return 1; });
@@ -125,7 +125,7 @@ TEST(alloc_m3, regression_zero_alloc_merge) {
         100 + 10 + 45);
 }
 
-TEST(alloc_m3, regression_zero_alloc_broadcast) {
+TEST(alloc_streams, regression_zero_alloc_broadcast) {
     stepwright::broadcast<int> b(4);
     auto s1 = b.subscribe();
     auto s2 = b.subscribe();
@@ -156,7 +156,7 @@ TEST(alloc_m3, regression_zero_alloc_broadcast) {
         9900 + 2);
 }
 
-TEST(alloc_m3, regression_zero_alloc_source_machine_and_for_each) {
+TEST(alloc_streams, regression_zero_alloc_source_machine_and_for_each) {
     test_support::async_child child;
     with_child w;
     w.child = &child;
@@ -196,7 +196,7 @@ TEST(alloc_m3, regression_zero_alloc_source_machine_and_for_each) {
         2);
 }
 
-TEST(alloc_m3, regression_zero_alloc_interval) {
+TEST(alloc_streams, regression_zero_alloc_interval) {
     stepwright::testing::manual_timer_service timers;
     auto ticks = stepwright::interval(timers, 1ms);
     expect_steady_state_zero_alloc(

@@ -1,5 +1,4 @@
-// Permanent cross-primitive stress test (spec M3 §0.2, based on the M2 review's
-// chaos probe). Four threads repeatedly run
+// Cross-primitive stress test. Four threads repeatedly run
 //   when_all( with_deadline( async_mutex::guarded(critical), timers, random ) x 4 )
 // on a steady timer service with random timeouts and random external
 // cancellation. Inside the mutex, `critical` checks exclusion, sends a tagged value
@@ -8,7 +7,7 @@
 // whatever thread delivers readiness. Checks: mutual exclusion, exactly-once
 // completion, no hang, results in {ok, timed_out, cancelled}, and that the consumer
 // received exactly the successfully sent values. The second test runs the same
-// units with every machine bound to a thread_pool (spec M4 §5).
+// units with every machine bound to a thread_pool.
 #include <gtest/gtest.h>
 
 #include "test_support.hpp"

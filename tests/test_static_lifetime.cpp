@@ -1,4 +1,4 @@
-// Regression for the M3 review (spec M4 §0): detail::cancelled_error() used to be
+// Static-lifetime regression: detail::cancelled_error() used to be
 // a function-local static, destroyed at exit. A thread still running during static
 // destruction (a detached thread, a timer service owned by another static) then
 // copied a destroyed handle whose payload had been freed.
