@@ -20,11 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: [format-check, forbidden, tidy, cppcheck]
+        task: [format-check, forbidden, tidy, cppcheck, docs, consumer]
     steps:
       - uses: actions/checkout@v4
       - name: Build dev image
-        run: make docker-image
+        uses: ./.github/actions/dev-image
       - name: Run ${{ matrix.task }}
         run: make docker-${{ matrix.task }}
 
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build dev image
-        run: make docker-image
+        uses: ./.github/actions/dev-image
       - name: Generate coverage
         run: make docker-coverage
       - name: Export report from the build volume

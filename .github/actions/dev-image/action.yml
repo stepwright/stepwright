@@ -1,0 +1,17 @@
+name: Cached dev image
+description: Build and load the same tagged Linux toolchain used by make
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+    - id: image
+      shell: bash
+      run: echo "tag=stepwright-dev:$(sha256sum docker/Dockerfile | cut -c1-12)-host" >> "$GITHUB_OUTPUT"
+    - uses: docker/build-push-action@v6
+      with:
+        context: docker
+        file: docker/Dockerfile
+        load: true
+        tags: ${{ steps.image.outputs.tag }}
+        cache-from: type=gha,scope=stepwright-dev-${{ runner.arch }}
+        cache-to: type=gha,mode=max,scope=stepwright-dev-${{ runner.arch }}

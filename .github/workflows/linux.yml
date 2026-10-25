@@ -23,10 +23,15 @@ jobs:
         arch: [x86_64, arm64]
         compiler: [gcc, clang, clang-libcxx]
         build_type: [Debug, Release]
+        include:
+          - {arch: x86_64, compiler: gcc13, build_type: Release}
+          - {arch: arm64, compiler: gcc13, build_type: Release}
+          - {arch: x86_64, compiler: clang18, build_type: Release}
+          - {arch: arm64, compiler: clang18, build_type: Release}
     steps:
       - uses: actions/checkout@v4
       - name: Build dev image
-        run: make docker-image
+        uses: ./.github/actions/dev-image
       - name: Build and test
         env:
           COMPILER: ${{ matrix.compiler }}
@@ -34,23 +39,27 @@ jobs:
         run: make docker-test
 
   sanitizers:
-    name: ${{ matrix.arch }} / ${{ matrix.sanitizer }}
+    name: ${{ matrix.arch }} / ${{ matrix.compiler }} / ${{ matrix.sanitizer }}
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64]
         sanitizer: [asan, tsan, ubsan, leak]
+        compiler: [clang]
+        include:
+          - {arch: x86_64, compiler: gcc, sanitizer: tsan}
+          - {arch: arm64, compiler: gcc, sanitizer: tsan}
     steps:
       - uses: actions/checkout@v4
       - name: Reduce ASLR entropy for ThreadSanitizer
         if: matrix.sanitizer == 'tsan'
         run: sudo sysctl -w vm.mmap_rnd_bits=28
       - name: Build dev image
-        run: make docker-image
+        uses: ./.github/actions/dev-image
       - name: Build and test with ${{ matrix.sanitizer }}
         env:
-          COMPILER: clang
+          COMPILER: ${{ matrix.compiler }}
         run: make docker-${{ matrix.sanitizer }}
 
   track-tasks:
@@ -59,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build dev image
-        run: make docker-image
+        uses: ./.github/actions/dev-image
       - name: Build and test with STEPWRIGHT_TRACK_TASKS=ON
         env:
           COMPILER: gcc

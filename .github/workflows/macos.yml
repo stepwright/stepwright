@@ -27,6 +27,9 @@ jobs:
         run: brew install ninja
       - name: Run ${{ matrix.task }}
         run: bash scripts/ci.sh ${{ matrix.task }}
+      - name: Test native consumers
+        if: matrix.task == 'test'
+        run: bash scripts/ci.sh consumer
 
   track-tasks:
     name: macos / AppleClang / live task registry
