@@ -9,7 +9,8 @@ set(STEPWRIGHT_EXAMPLES
     04_async_mutex
     05_channel_pipeline
     06_broadcast
-    07_source_machine)
+    07_source_machine
+    08_cancellation)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
