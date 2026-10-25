@@ -47,17 +47,17 @@ private:
             if (this->cancel_requested()) {
                 return base::fail(detail::cancelled_error());
             }
-            pull<T> next = source_->try_pull();
-            switch (next.status()) {
+            pull<T> pulled = source_->try_pull();
+            switch (pulled.status()) {
                 case pull<T>::state::item:
                     if constexpr (std::is_void_v<result_type>) {
-                        fn_(std::move(next).value());
+                        fn_(std::move(pulled).value());
                     } else if constexpr (std::is_same_v<result_type, bool>) {
-                        if (!fn_(std::move(next).value())) {
+                        if (!fn_(std::move(pulled).value())) {
                             return base::done();
                         }
                     } else {
-                        error result = fn_(std::move(next).value());
+                        error result = fn_(std::move(pulled).value());
                         if (result) {
                             return base::fail(std::move(result));
                         }
@@ -69,7 +69,7 @@ private:
                 case pull<T>::state::end:
                     return base::done();
                 case pull<T>::state::failed:
-                    return base::fail(next.failure_reason());
+                    return base::fail(pulled.failure_reason());
             }
         }
     }
