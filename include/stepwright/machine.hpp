@@ -152,6 +152,11 @@ private:
     static constexpr std::uint32_t child_ready = 128;
     static constexpr std::uint32_t child_failed = 256;
 
+    // A function, so that it is evaluated once D is complete.
+    static constexpr bool has_cancel_hook() noexcept {
+        return requires(D& derived) { derived.on_cancel(); };
+    }
+
     template <auto Fn>
     static constexpr bool valid_no_arg = std::is_same_v<decltype(Fn), step (D::*)()> ||
                                          std::is_same_v<decltype(Fn), step (D::*)() noexcept>;
@@ -248,12 +253,19 @@ private:
 #if STEPWRIGHT_TRACK_TASKS
         detail::live_registry::instance().add(live_, detail::type_name<D>());
 #endif
-        cancellation_.arm(token, &cancel, this);
+        // Idle here: finish() disarmed whatever the previous run registered. The
+        // default hook only acts on a park, so it registers at the first park
+        // (see docs/M5-performance.md); a custom hook registers now.
+        cancellation_.bind(std::move(token), &cancel, this);
+        registered_ = has_cancel_hook() && cancellation_.token().can_be_cancelled();
+        if (registered_) {
+            cancellation_.activate();
+        }
         drive(invoke<&D::begin>(this, {}));
     }
     static void cancel(void* ctx) noexcept {
         auto& self = *static_cast<machine*>(ctx);
-        if constexpr (requires(D& derived) { derived.on_cancel(); }) {
+        if constexpr (has_cancel_hook()) {
             static_cast<D&>(self).on_cancel();
         } else {
             // This callback is armed only for cancellable tokens. The requested
@@ -406,10 +418,17 @@ private:
                     work_item::run = value.resume;
                     track(detail::live_state::parked, resume_name(value));
                     if (token().can_be_cancelled()) {
+                        // Register before publishing the park: a request that
+                        // finds the registration runs the default hook, which
+                        // either sees `parked` or is followed by the query below.
+                        if (!registered_) {
+                            registered_ = true;
+                            cancellation_.activate();
+                        }
                         // Pair SC park/request publication and the two SC reads
                         // to exclude the cross-atomic store-buffering outcome.
                         state_.fetch_or(parked, std::memory_order_seq_cst);
-                        if constexpr (!requires(D& derived) { derived.on_cancel(); }) {
+                        if constexpr (!has_cancel_hook()) {
                             if (cancel_requested()) {
                                 wake_if_parked(error::make(errc::cancelled));
                             }
@@ -453,7 +472,9 @@ private:
         }
     }
     void finish(error result) noexcept {
-        cancellation_.disarm();
+        if (registered_) {
+            cancellation_.disarm();
+        }
         auto old = state_.load(std::memory_order_acquire);
         for (;;) {
             // A wake may already have claimed the slot but not published it.
@@ -493,6 +514,9 @@ private:
     error child_result_;
     std::atomic<std::uint32_t> state_{0};
     std::atomic<bool> step_guard_{false};
+    // Whether this run activated cancellation_; only the driver owning `running`
+    // reads or writes it.
+    bool registered_ = false;
 #if STEPWRIGHT_TRACK_TASKS
     detail::live_node live_;
 #endif

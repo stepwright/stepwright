@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 
@@ -22,6 +23,10 @@
 #endif
 
 namespace stepwright::detail {
+// Padding unit for state written by different threads: the 128-byte line pair of
+// Apple silicon and two x86-64 lines (whose adjacent-line prefetcher pairs them).
+inline constexpr std::size_t cache_line = 128;
+
 [[noreturn]] inline void assertion_failed(const char* expr, const char* msg, const char* file,
                                           int line) noexcept {
     std::fprintf(stderr, "stepwright assertion: %s (%s), %s:%d\n", expr, msg, file, line);

@@ -62,7 +62,9 @@ public:
         if (!token.can_be_cancelled()) {
             return;
         }
-        cancellation_.arm(token, on_cancel, ctx);
+        // Idle: the previous wait's finish() disarmed it.
+        cancellation_.bind(token, on_cancel, ctx);
+        cancellation_.activate();
         if ((phase_.fetch_or(armed, std::memory_order_acq_rel) & resolved) != 0) {
             finish();
         }
