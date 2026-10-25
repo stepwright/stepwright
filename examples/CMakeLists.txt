@@ -7,7 +7,8 @@ set(STEPWRIGHT_EXAMPLES
     02_timeouts
     03_fan_out
     04_async_mutex
-    05_channel_pipeline)
+    05_channel_pipeline
+    06_broadcast)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
