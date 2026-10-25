@@ -4,10 +4,14 @@
 
 #include <array>
 #include <atomic>
+#include <coroutine>
+#include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <thread>
+#include <utility>
 
 namespace {
 constexpr stepwright::completion ignored{[](void*, const stepwright::error& e) noexcept {
@@ -194,6 +198,132 @@ void BM_shared_token_complete(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * state.range(0));
 }
+
+// --- C++20 coroutine baseline ---------------------------------------------------------
+//
+// A minimal lazy coroutine task, written as a competent user would write one
+// without a library: the frame starts suspended, co_await stores the awaiting
+// coroutine and transfers to the child (symmetric transfer, so chains of
+// synchronously completing children use constant stack), and final_suspend
+// transfers back to the awaiting coroutine. The result is a stepwright::error, as
+// for machines; exceptions terminate. Each call creates a frame; the promise
+// counts frame allocations so the benchmarks can report whether the compiler
+// elided them (benchmarks/README.md).
+std::int64_t coro_frames = 0; // single-threaded benchmarks only
+
+struct coro_task {
+    struct promise_type {
+        stepwright::error result;
+        std::coroutine_handle<> continuation = std::noop_coroutine();
+        static void* operator new(std::size_t size) {
+            ++coro_frames;
+            return ::operator new(size);
+        }
+        static void operator delete(void* frame, std::size_t size) noexcept {
+            ::operator delete(frame, size);
+        }
+        coro_task get_return_object() noexcept {
+            return coro_task{std::coroutine_handle<promise_type>::from_promise(*this)};
+        }
+        std::suspend_always initial_suspend() noexcept { return {}; }
+        struct final_awaiter {
+            bool await_ready() const noexcept { return false; }
+            std::coroutine_handle<>
+            await_suspend(std::coroutine_handle<promise_type> self) const noexcept {
+                return self.promise().continuation;
+            }
+            void await_resume() const noexcept {}
+        };
+        final_awaiter final_suspend() noexcept { return {}; }
+        void return_value(stepwright::error e) noexcept { result = std::move(e); }
+        [[noreturn]] void unhandled_exception() noexcept { std::terminate(); }
+    };
+
+    explicit coro_task(std::coroutine_handle<promise_type> h) noexcept : handle(h) {}
+    coro_task(coro_task&& other) noexcept : handle(std::exchange(other.handle, {})) {}
+    coro_task(const coro_task&) = delete;
+    coro_task& operator=(const coro_task&) = delete;
+    coro_task& operator=(coro_task&&) = delete;
+    ~coro_task() {
+        if (handle) {
+            handle.destroy();
+        }
+    }
+
+    // Awaiting a task runs it to completion and yields its result.
+    bool await_ready() const noexcept { return false; }
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> awaiting) noexcept {
+        handle.promise().continuation = awaiting;
+        return handle;
+    }
+    stepwright::error await_resume() noexcept { return std::move(handle.promise().result); }
+    // Run a root task on this thread (all benchmarks here complete synchronously).
+    stepwright::error run() {
+        handle.resume();
+        return std::move(handle.promise().result);
+    }
+
+    std::coroutine_handle<promise_type> handle;
+};
+
+// Same work per step as chain<0>: the coroutine body is the chain.
+coro_task coro_then_chain(std::int64_t remaining) {
+    for (;;) {
+        benchmark::DoNotOptimize(remaining);
+        if (remaining-- == 0) {
+            co_return stepwright::error{};
+        }
+    }
+}
+coro_task coro_sync_child() {
+    co_return stepwright::error{};
+}
+// The same child where the compiler cannot see the call (as for a child defined
+// in another translation unit, or reached through an interface): no elision.
+#if __has_cpp_attribute(gnu::noinline)
+[[gnu::noinline]]
+#endif
+coro_task coro_opaque_sync_child() {
+    co_return stepwright::error{};
+}
+// Same work per step as chain<1>: await a synchronously completing child, and
+// stop on its failure (as a no-argument machine step does).
+template <coro_task (*Child)()>
+coro_task coro_after_sync_child(std::int64_t remaining) {
+    for (;;) {
+        benchmark::DoNotOptimize(remaining);
+        if (remaining-- == 0) {
+            co_return stepwright::error{};
+        }
+        stepwright::error e = co_await Child();
+        if (e) {
+            co_return e;
+        }
+    }
+}
+template <class Make>
+void run_coro(benchmark::State& state, Make make) {
+    coro_frames = 0;
+    for (auto _ : state) {
+        coro_task root = make(state.range(0));
+        const stepwright::error e = root.run();
+        bool failed = static_cast<bool>(e);
+        benchmark::DoNotOptimize(failed);
+    }
+    const auto items = state.iterations() * state.range(0);
+    state.SetItemsProcessed(items);
+    state.counters["frames_per_item"] =
+        static_cast<double>(coro_frames) / static_cast<double>(items == 0 ? 1 : items);
+}
+void BM_coro_then_chain(benchmark::State& state) {
+    run_coro(state, coro_then_chain);
+}
+void BM_coro_after_sync_child(benchmark::State& state) {
+    run_coro(state, coro_after_sync_child<&coro_sync_child>);
+}
+void BM_coro_after_opaque_sync_child(benchmark::State& state) {
+    run_coro(state, coro_after_sync_child<&coro_opaque_sync_child>);
+}
 } // namespace
 
 BENCHMARK(BM_then_chain)->Arg(1000);
@@ -204,4 +334,7 @@ BENCHMARK(BM_park_wake_ping_pong_threads)->UseRealTime();
 BENCHMARK(BM_error_propagation_depth)->Arg(8);
 BENCHMARK(BM_baseline_fnptr_chain)->Arg(1000);
 BENCHMARK(BM_baseline_std_function_chain)->Arg(1000);
+BENCHMARK(BM_coro_then_chain)->Arg(1000);
+BENCHMARK(BM_coro_after_sync_child)->Arg(1000);
+BENCHMARK(BM_coro_after_opaque_sync_child)->Arg(1000);
 BENCHMARK(BM_shared_token_complete)->Arg(1000)->Arg(10000)->Arg(100000);
