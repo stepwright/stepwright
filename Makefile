@@ -7,7 +7,7 @@
 # the container so every contributor uses the same tool versions.
 #
 # Variables:
-#   COMPILER=native|gcc|clang|clang-libcxx   (container default: gcc)
+#   COMPILER=native|gcc|clang|clang-libcxx|gcc13|clang18   (container default: gcc)
 #   BUILD_TYPE=Release|Debug                  (default: Release)
 #   PLATFORM=linux/arm64|linux/amd64          (container only; default: host arch)
 #   EXAMPLE=<name>  BENCH_ARGS="..."  CMAKE_ARGS="..."  JOBS=<n>
@@ -30,6 +30,7 @@ CI := bash scripts/ci.sh
 # Recorded with benchmark results (the container cannot see the host's git or CPU).
 GIT_COMMIT := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 HOST_CPU   := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null || sed -n 's/^model name.*: //p' /proc/cpuinfo 2>/dev/null | head -1)
+HOST_LOAD  := $(shell uptime | sed -E 's/.*load averages?: //')
 
 export COMPILER BUILD_TYPE EXAMPLE BENCH_ARGS BENCH_OUT BENCH_LABEL CMAKE_ARGS JOBS
 export STEPWRIGHT_STRESS_SCALE GIT_COMMIT
@@ -53,16 +54,18 @@ DOCKER_RUN = $(DOCKER) run --rm $(TTY_FLAG) $(USER_FLAG) \
 	-e BUILD_ROOT=/work/build -e HOME=/tmp \
 	-e COMPILER -e BUILD_TYPE -e EXAMPLE -e BENCH_ARGS -e CMAKE_ARGS -e JOBS \
 	-e BENCH_OUT -e BENCH_LABEL -e GIT_COMMIT -e BENCH_HOST_CPU="$(HOST_CPU) (container)" \
+	-e BENCH_HOST_LOAD="$(HOST_LOAD)" \
 	-e STEPWRIGHT_STRESS_SCALE \
+	-e STEPWRIGHT_TRACKED_FILES=/work/src/build/stepwright-tracked-files.list \
 	$(IMAGE)
 
-TASKS := build test debug asan tsan ubsan bench run check
-CONTAINER_ONLY := format format-check tidy cppcheck coverage leak forbidden
+TASKS := build test debug asan tsan ubsan bench run check consumer
+CONTAINER_ONLY := format format-check tidy cppcheck coverage leak forbidden docs
 DOCKER_TASKS := $(addprefix docker-,$(TASKS) $(CONTAINER_ONLY))
 
 .DEFAULT_GOAL := help
 .PHONY: help clean $(TASKS) $(CONTAINER_ONLY) $(DOCKER_TASKS) \
-	docker-image docker-shell docker-clean
+	docker-image docker-shell docker-clean docker-tracked-files
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -83,6 +86,7 @@ ubsan:   ; @$(CI) ubsan    ## (native) UBSan build + tests
 bench:   ; @$(CI) bench    ## (native) Release benchmarks
 run:     ; @$(CI) run      ## (native) run EXAMPLE=<name>
 check:   ; @$(CI) check    ## (native) forbidden + release + debug + asan + tsan
+consumer: ; @$(CI) consumer ## (native) relocated install + FetchContent + subdirectory
 
 # Tool-version-sensitive tasks are redirected to the container.
 $(CONTAINER_ONLY): %: docker-%
@@ -98,8 +102,17 @@ docker-image: ## Build the dev image if it does not exist yet
 	@$(DOCKER) image inspect $(IMAGE) >/dev/null 2>&1 || \
 		$(DOCKER) build $(if $(PLATFORM),--platform $(PLATFORM)) -t $(IMAGE) -f docker/Dockerfile docker
 
-docker-shell: docker-image ## Interactive shell in the dev container
+docker-shell: docker-image docker-tracked-files ## Interactive shell in the dev container
 	@$(DOCKER_RUN) bash
+
+# Keep a linked worktree's parent Git directory outside the container boundary.
+# Only tasks which scan tracked files need this manifest; ordinary archive builds
+# and benchmarks do not require repository metadata.
+docker-tracked-files:
+	@mkdir -p build
+	@git ls-files -z > build/stepwright-tracked-files.list
+
+docker-forbidden docker-check: docker-tracked-files
 
 docker-clean: ## Delete the container build volume
 	-$(DOCKER) volume rm $(BUILD_VOLUME)
