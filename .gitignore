@@ -5,10 +5,12 @@ build/
 *.a
 *.dylib
 *.so
-.claude/
+.clau[d]e/
 .cursor/
 cmake-build-*/
 compile_commands.json
+__pycache__/
+*.py[cod]
 /Testing/
 
 # Legacy top-level build flavors (now nested under build/)
@@ -28,4 +30,3 @@ coverage.raw.info
 
 # clang-tidy fix-it caches
 .clang-tidy.cache/
-

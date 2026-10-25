@@ -25,6 +25,9 @@ foreach(name static_lifetime thread_pool virtual_executor scenarios)
 endforeach()
 stepwright_add_test(test_cancel_scaling)
 include(guide_snippets.cmake)
+find_program(STEPWRIGHT_PYTHON NAMES python3 REQUIRED)
+add_test(NAME test_forbidden COMMAND ${STEPWRIGHT_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_forbidden.py
+    ${CMAKE_CURRENT_BINARY_DIR}/forbidden-scratch)
 # The registry test tracks tasks in its own executable only: every stepwright
 # translation unit of that program sees the same definition (no ODR risk).
 stepwright_add_test(test_live_tasks)
