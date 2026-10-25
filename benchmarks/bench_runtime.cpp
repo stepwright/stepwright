@@ -333,6 +333,63 @@ void BM_virtual_executor_post_run(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(n));
 }
+
+// Registration-heavy counterpart to the lazy-registration fan-out benchmark.
+// Every worker starts and wakes its own partition, all sharing one token. The
+// gate forces concurrent registration rather than measuring one serial poster.
+struct parked_leaf : stepwright::machine<parked_leaf> {
+    step begin() { return park<&parked_leaf::finish_up>(); }
+    step finish_up() { return done(); }
+};
+
+struct park_batch : stepwright::work_item {
+    static constexpr std::size_t count = 128;
+    std::vector<parked_leaf> leaves{count};
+    stepwright::cancel_token token;
+    std::atomic<std::size_t>* ready = nullptr;
+    std::size_t workers = 0;
+
+    park_batch() {
+        run = [](stepwright::work_item* item) noexcept {
+            auto& self = *static_cast<park_batch*>(item);
+            self.ready->fetch_add(1, std::memory_order_acq_rel);
+            while (self.ready->load(std::memory_order_acquire) != self.workers) {
+                std::this_thread::yield();
+            }
+            const stepwright::completion ignore{
+                .fn = [](void*, const stepwright::error&) noexcept {}, .ctx = nullptr};
+            for (auto& leaf : self.leaves) {
+                leaf.start(ignore, self.token);
+            }
+            for (auto& leaf : self.leaves) {
+                leaf.wake();
+            }
+        };
+    }
+};
+
+void BM_shared_token_park_workers(benchmark::State& state) {
+    const auto workers = static_cast<std::size_t>(state.range(0));
+    stepwright::thread_pool pool(workers);
+    stepwright::cancel_source source;
+    std::atomic<std::size_t> ready{0};
+    std::vector<park_batch> batches(workers);
+    for (auto& batch : batches) {
+        batch.token = source.token();
+        batch.ready = &ready;
+        batch.workers = workers;
+    }
+    for (auto _ : state) {
+        ready.store(0, std::memory_order_relaxed);
+        for (auto& batch : batches) {
+            pool.post(batch);
+        }
+        pool.wait_idle();
+    }
+    state.counters["state_bytes"] = sizeof(stepwright::detail::cancel_state);
+    state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(workers) *
+                            static_cast<std::int64_t>(park_batch::count));
+}
 } // namespace
 
 BENCHMARK(BM_pool_post_run)->Arg(1)->Arg(4)->Arg(8)->UseRealTime();
@@ -346,3 +403,4 @@ BENCHMARK(BM_pool_fan_out_fan_in_work)->Arg(10'000)->UseRealTime();
 BENCHMARK(BM_pool_fan_out_fan_in_work_one_thread)->Arg(10'000)->UseRealTime();
 BENCHMARK(BM_leaf_work);
 BENCHMARK(BM_virtual_executor_post_run);
+BENCHMARK(BM_shared_token_park_workers)->Arg(1)->Arg(4)->Arg(8)->UseRealTime();
