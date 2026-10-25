@@ -10,7 +10,8 @@ set(STEPWRIGHT_EXAMPLES
     05_channel_pipeline
     06_broadcast
     07_source_machine
-    08_cancellation)
+    08_cancellation
+    09_deterministic_testing)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
