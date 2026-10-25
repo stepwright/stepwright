@@ -104,8 +104,8 @@ not to use C++20 coroutines.
 | M2 | Primitives: `event`, `shared_task`, `async_mutex`, `async_shared_mutex`, `when_all`, `when_any`, timer services (steady and manual), `delay`, `with_deadline`, `make_task`, `finally_task`, `reschedule` |
 | M3 | Streams: `source<T>` pull protocol, `source_machine`, `channel`, `merge`, `broadcast`, `empty`/`just`/`from_range`/`generate`/`interval` |
 | M4 | Runtime: `thread_pool`, `virtual_executor` for deterministic tests, live task registry |
-| M5 | Examples |
-| M6 | Benchmarks (single- and multi-threaded, fair baselines, documented method) |
+| M5 | Examples; fan-out scaling (cancellation state, combinator counters, pool); benchmark method, coroutine baseline and published results |
+| M6 | Benchmarks (single- and multi-threaded, fair baselines, documented method), extending M5's suite |
 | M7 | Documentation, CMake install/export, packaging |
 | M8 | v0.1.0 release |
 

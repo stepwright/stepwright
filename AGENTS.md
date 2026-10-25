@@ -22,6 +22,8 @@ make debug         # Debug build + tests
 make asan          # ASan + UBSan
 make tsan          # ThreadSanitizer
 make check         # forbidden scan + release + debug + asan + tsan
+make run EXAMPLE=01_first_machine   # one example (examples/README.md)
+make bench BENCH_OUT=build/bench/macos   # benchmarks, also as JSON (benchmarks/README.md)
 
 # Linux, in Docker (COMPILER=gcc|clang|clang-libcxx, PLATFORM=linux/amd64 for x86-64)
 make docker-test

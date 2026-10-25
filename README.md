@@ -33,6 +33,13 @@ make help          # all targets
 
 Supported: macOS (AppleClang) and Linux (GCC 14, Clang 20; x86-64 and arm64).
 
+## Learn and measure
+
+- [`examples/`](examples/README.md): ten runnable programs, from a first machine
+  to finding a hang (`make run EXAMPLE=01_first_machine`).
+- [`docs/benchmarks.md`](docs/benchmarks.md): published results;
+  [`benchmarks/README.md`](benchmarks/README.md): what is measured and how.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
