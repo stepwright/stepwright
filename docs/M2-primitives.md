@@ -200,6 +200,13 @@ npos`). With `run_all` and an empty start token the children get an empty token
 the index: `when_any<N>` embeds `std::array<slot, N>`; `when_any_range` allocates
 its slots once at construction. `when_all` uses the combinator itself as context.
 
+*M5 amendment* (`docs/M5-performance.md`). A `when_all_range` of 64 or more
+children counts completions in 16 counters allocated at construction (child *i*
+uses counter *i* mod 16, each on its own cache line); a counter's last child
+releases one unit, so the unit count holds one unit per counter instead of one per
+child. Failures are still recorded, and cancellation requested, before the child's
+share is released.
+
 ## Timers (`timer.hpp`, `testing/manual_timer_service.hpp`)
 
 `timer_service::entry` is the intrusive node: `fire` plus implementation-owned

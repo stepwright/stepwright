@@ -79,6 +79,17 @@ Worker fields are padded to 128 bytes (the cache-line pair on Apple silicon, two
 lines on x86-64): the consumer index, the owner-written fields, the sleep state and
 the slots each start a new line, and no two workers share a line.
 
+*M5 amendment* (`docs/M5-performance.md`). The owner-written fields are split: `tail`
+and `completed` (read by thieves on every look) share a line, and `posted` moved to
+the owner-private line. The owner remembers a lower bound of its `head`
+(`head_seen`) and rereads `head` only when the ring looks full. At most a quarter of
+the workers (at least one) search at once, instead of half. **Liveness fix:** items
+a worker moves into its own ring (injection batches, stolen extras) are announced
+with a read-modify-write of `idle_`, a sleeper's rescan that finds work hands the
+search over, and that rescan takes a single queued item at once; before, items
+posted from outside could wait forever behind a blocked worker (details and
+regression test in `docs/M5-performance.md`).
+
 ### Sleeping and waking
 
 One atomic word `idle_` packs two counters: *searching* workers (spinning on the
@@ -95,8 +106,9 @@ queues) and *sleeping* workers. The sleeping workers sit on a small stack under 
   injection queue or a victim, or overflows its ring, applies the same check.
   When every worker is busy (`sleeping == 0`), or a searcher will find the item,
   there is no system call.
-- **A worker without work** becomes a searcher (if fewer than half of the workers
-  are already searching, a cap that bounds contention on the queues), spins over
+- **A worker without work** becomes a searcher (if fewer than a quarter of the
+  workers are already searching, a cap that bounds contention on the queues; half
+  before M5), spins over
   its ring, the injection queue and the victims with exponential `cpu_relax`
   back-off and then `yield`, for a bounded number of rounds.
 - **Found work while searching**: decrement `searching`. If it was the *last*

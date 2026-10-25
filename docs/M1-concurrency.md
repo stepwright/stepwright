@@ -141,6 +141,17 @@ Default cancellation wakes parked machines. The driver also checks an
 already-requested token when entering park, closing cancellation-before-park.
 The check uses conditional delivery so a buffered reply keeps first-wake priority.
 
+*M5 amendment* (`docs/M5-performance.md`). The state's single mutex and list are
+now 8 independently spin-locked stripes (a registration's stripe is a hash of its
+address; unlinking is still O(1)), with the reference count on its own cache
+line; a requester skips stripes whose `occupied` flag is clear, and a foreign
+disarm waits for a running callback with `atomic::wait` instead of a condition
+variable. Invocation, self-disarm and wait semantics are unchanged. A machine
+without an `on_cancel()` hook binds its token at start but registers only at its
+first park, *before* publishing `parked`; the four-operation argument below is
+unchanged from that point on (the M5 document shows why the later registration
+loses no request).
+
 ### Formal ordering of park entry against default cancellation
 
 With a cancellable token these four operations are sequentially consistent:
