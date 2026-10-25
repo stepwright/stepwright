@@ -16,9 +16,8 @@
 
 namespace stepwright {
 namespace detail {
-// Padding unit for per-worker state: the 128-byte line pair of Apple silicon and
-// two x86-64 lines (whose adjacent-line prefetcher pairs them).
-inline constexpr std::size_t pool_line = 128;
+// Padding unit for per-worker state (see cache_line).
+inline constexpr std::size_t pool_line = cache_line;
 } // namespace detail
 
 /// Fixed-size multi-threaded executor with per-worker queues and work stealing
@@ -50,10 +49,15 @@ class thread_pool final : public executor {
     struct alignas(detail::pool_line) worker {
         // Consumer index: advanced by CAS by the owner's pops and by thieves.
         alignas(detail::pool_line) std::atomic<std::uint64_t> head{0};
-        // Owner-written fields.
+        // Written by the owner, read by thieves on every look.
         alignas(detail::pool_line) std::atomic<std::uint64_t> tail{0};
-        std::atomic<std::uint64_t> posted{0};    // single writer: this worker
         std::atomic<std::uint64_t> completed{0}; // single writer: this worker
+        // Owner-private (posted is also read by wait_idle()): kept off the lines
+        // that thieves poll, so a push does not have to win them back.
+        alignas(detail::pool_line) std::atomic<std::uint64_t> posted{0}; // single writer
+        // A lower bound of head (head only grows): the owner rereads head only
+        // when the ring looks full, or learns it from its own pops.
+        std::uint64_t head_seen = 0;
         thread_pool* pool = nullptr;
         std::uint64_t random = 0;
         std::uint32_t ticks = 0;
@@ -199,13 +203,22 @@ private:
                           std::memory_order_release);
         for (;;) {
             const auto t = self.tail.load(std::memory_order_relaxed);
-            const auto h = self.head.load(std::memory_order_acquire);
-            if (t - h < ring_capacity) {
-                self.slots[ring_index(t)].store(&item, std::memory_order_relaxed);
-                self.tail.store(t + 1, std::memory_order_release);
-                return t + 1 - h;
+            // head_seen <= head, so the room check is conservative. Every claim up
+            // to it was observed with acquire ordering (below, or by a pop's CAS),
+            // so the slots it frees are no longer being read.
+            auto h = self.head_seen;
+            if (t - h >= ring_capacity) {
+                h = self.head.load(std::memory_order_acquire);
+                self.head_seen = h;
+                if (t - h >= ring_capacity) {
+                    overflow(self, h);
+                    continue;
+                }
             }
-            overflow(self, h);
+            self.slots[ring_index(t)].store(&item, std::memory_order_relaxed);
+            self.tail.store(t + 1, std::memory_order_release);
+            // At least the number queued (more if thieves took some unseen).
+            return t + 1 - h;
         }
     }
     // Owner only, ring full: claim its older half and move it to the injection
@@ -227,15 +240,18 @@ private:
         inject(*first, *last, half, false);
         wake_if_needed();
     }
+    // Owner only.
     static work_item* pop_local(worker& self) noexcept {
         auto h = self.head.load(std::memory_order_acquire);
         for (;;) {
             if (h == self.tail.load(std::memory_order_relaxed)) {
+                self.head_seen = h;
                 return nullptr;
             }
             work_item* item = self.slots[ring_index(h)].load(std::memory_order_relaxed);
             if (self.head.compare_exchange_weak(h, h + 1, std::memory_order_acq_rel,
                                                 std::memory_order_acquire)) {
+                self.head_seen = h + 1;
                 return item;
             }
         }
@@ -263,7 +279,9 @@ private:
     }
     // Take the oldest injected item plus a batch for the own ring. force: lock even
     // if the size hint says empty (the complete scans).
-    work_item* take_injected(worker& self, bool force) noexcept {
+    // announce: call wake_reliably() for items moved into the own ring (false for a
+    // searcher, whose stop_searching() hands over, and for the pre-sleep scan).
+    work_item* take_injected(worker& self, bool force, bool announce) noexcept {
         if (!force && inject_size_.load(std::memory_order_relaxed) == 0) {
             return nullptr;
         }
@@ -284,6 +302,7 @@ private:
         if (inject_head_ == nullptr) {
             inject_tail_ = nullptr;
         }
+        const bool more_injected = inject_head_ != nullptr;
         inject_size_.store(available - extra - 1, std::memory_order_relaxed);
         inject_lock_.unlock();
         if (extra != 0) {
@@ -295,6 +314,11 @@ private:
                 ring_push(self, item);
                 item = next;
             }
+            if (announce) {
+                wake_reliably();
+            }
+        } else if (more_injected) {
+            // One taker per wake-up: hand the rest of the injected work on.
             wake_if_needed();
         }
         return first;
@@ -304,7 +328,8 @@ private:
 
     // Take the older half (at most max_batch) of a victim's ring: run the first item,
     // keep the rest in the own ring (which is empty when stealing is attempted).
-    work_item* steal(worker& self) noexcept {
+    // eager: also take a victim's single item at the first look (see steal_from).
+    work_item* steal(worker& self, bool eager, bool announce) noexcept {
         if (count_ == 1) {
             return nullptr;
         }
@@ -317,13 +342,13 @@ private:
             if (&victim == &self) {
                 continue;
             }
-            if (work_item* item = steal_from(self, victim)) {
+            if (work_item* item = steal_from(self, victim, eager, announce)) {
                 return item;
             }
         }
         return nullptr;
     }
-    work_item* steal_from(worker& self, worker& victim) noexcept {
+    work_item* steal_from(worker& self, worker& victim, bool eager, bool announce) noexcept {
         auto h = victim.head.load(std::memory_order_acquire);
         for (;;) {
             const auto t = victim.tail.load(std::memory_order_acquire);
@@ -331,11 +356,11 @@ private:
             if (available == 0 || available > ring_capacity) {
                 return nullptr; // empty (or a stale head racing a wrap: skip)
             }
-            if (available == 1) {
+            if (available == 1 && !eager) {
                 // Usually the victim's own next item, popped within nanoseconds:
                 // taking it would just bounce work between workers. Take it only if
                 // the victim completed nothing since the previous look (it is stuck
-                // in a long item).
+                // in a long item). A worker about to sleep looks eagerly instead.
                 const auto completed = victim.completed.load(std::memory_order_relaxed);
                 if (self.candidate != &victim || self.candidate_completed != completed) {
                     self.candidate = &victim;
@@ -355,37 +380,43 @@ private:
                                                   std::memory_order_acquire)) {
                 if (n > 1) {
                     self.tail.store(own + n - 1, std::memory_order_release);
-                    wake_if_needed();
+                    if (announce) {
+                        wake_reliably();
+                    }
                 }
                 return first;
             }
         }
     }
-    work_item* find(worker& self) noexcept {
+    // searching: called by a searcher (see take_injected's announce).
+    work_item* find(worker& self, bool searching) noexcept {
         if (++self.ticks == fairness_period) {
             self.ticks = 0;
-            if (work_item* item = take_injected(self, false)) {
+            if (work_item* item = take_injected(self, false, !searching)) {
                 return item;
             }
         }
         if (work_item* item = pop_local(self)) {
             return item;
         }
-        if (work_item* item = take_injected(self, false)) {
+        if (work_item* item = take_injected(self, false, !searching)) {
             return item;
         }
-        return steal(self);
+        return steal(self, false, !searching);
     }
-    // Complete scan: the injection queue is checked under its lock regardless of
-    // its size hint (the no-lost-wake-up recheck).
+    // Complete scan before sleeping or exiting: the injection queue is checked
+    // under its lock regardless of its size hint (the no-lost-wake-up recheck), and
+    // a victim's single item is taken at once. A worker about to sleep has nothing
+    // better to do, and otherwise that item could wait behind a long-running (or
+    // blocked) item while every other worker sleeps: nobody would look twice.
     work_item* scan(worker& self) noexcept {
         if (work_item* item = pop_local(self)) {
             return item;
         }
-        if (work_item* item = take_injected(self, true)) {
+        if (work_item* item = take_injected(self, true, false)) {
             return item;
         }
-        return steal(self);
+        return steal(self, true, false);
     }
 
     // --- idle protocol ----------------------------------------------------------
@@ -396,11 +427,31 @@ private:
             wake_one();
         }
     }
+    // For items a worker moved into its own ring from elsewhere (an injection
+    // batch, stolen extras). It did not post them, so it may block in an item that
+    // waits for them: another worker must be able to take them. A searcher hands
+    // its search over in stop_searching(); any other worker calls this. A load of
+    // idle_ could miss a worker going to sleep whose pre-sleep scan misses the
+    // items (store buffering between the ring's tail and idle_); an RMW cannot:
+    // either it follows that worker's sleep registration in idle_'s order and
+    // sees it, or the registration reads from it and the scan sees the items.
+    void wake_reliably() noexcept {
+        if (count_ == 1) {
+            return; // nobody else could take them
+        }
+        const auto state = idle_.fetch_add(0, std::memory_order_acq_rel);
+        if ((state >> 32U) != 0 && (state & searching_mask) == 0) {
+            wake_one();
+        }
+    }
     bool start_searching() noexcept {
         auto state = idle_.load(std::memory_order_relaxed);
         for (;;) {
-            // At most half of the workers search at once (at least one may).
-            if ((state & searching_mask) != 0 && 2 * (state & searching_mask) >= count_) {
+            // At most a quarter of the workers search at once (at least one may):
+            // every look at a victim costs its owner a cache-line transfer on its
+            // next push or pop, and one searcher suffices to ramp up (each one that
+            // finds work hands the search over to a sleeper).
+            if ((state & searching_mask) != 0 && 4 * (state & searching_mask) >= count_) {
                 return false;
             }
             if (idle_.compare_exchange_weak(state, state + searching_one, std::memory_order_acq_rel,
@@ -436,7 +487,7 @@ private:
     }
     work_item* search(worker& self) noexcept {
         for (unsigned round = 0; round < spin_rounds + yield_rounds; ++round) {
-            if (work_item* item = find(self)) {
+            if (work_item* item = find(self, true)) {
                 return item;
             }
             if (stopping_.load(std::memory_order_acquire)) {
@@ -458,6 +509,8 @@ private:
         for (;;) {
             if (searching) {
                 if (work_item* item = search(self)) {
+                    // Hands the search over if this was the last searcher; other
+                    // searchers otherwise look at whatever this worker moved.
                     stop_searching(true);
                     return item;
                 }
@@ -493,6 +546,12 @@ private:
                 }
                 if (claimed) {
                     stop_searching(true); // a waker already made this worker a searcher
+                } else {
+                    // This worker may have been the last searcher (its registration
+                    // ended the search): hand the search over, as stop_searching()
+                    // does. Otherwise work the other searchers left to it, or items
+                    // it just moved, could wait behind a blocked item.
+                    wake_reliably();
                 }
                 return item;
             }
@@ -502,7 +561,11 @@ private:
             searching = true; // released by wake_one() or shutdown()
         }
         // Stopping: one last complete scan; nothing left means this worker is done.
-        return scan(self);
+        work_item* item = scan(self);
+        if (item != nullptr) {
+            wake_reliably(); // for anything this scan moved into the own ring
+        }
+        return item;
     }
     // Under sleep_mutex_: undo this worker's own sleep registration.
     void remove_sleeper(worker& self) noexcept {
@@ -519,7 +582,7 @@ private:
     void run_worker(worker& self) noexcept {
         current_worker = &self;
         for (;;) {
-            work_item* item = find(self);
+            work_item* item = find(self, false);
             if (item == nullptr) {
                 item = idle(self);
                 if (item == nullptr) {

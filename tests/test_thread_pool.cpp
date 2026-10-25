@@ -392,3 +392,41 @@ TEST(thread_pool, bound_machines_continue_on_the_pool) {
         EXPECT_EQ(m.steps, 2);
     }
 }
+
+// Regression (found in M5 by test_alloc_m4's warm-up, present since M4): items
+// posted from outside that each wait until all of them run. An injected batch
+// moved into the ring of a worker that then blocks, or a sleeper's rescan that
+// took one item and ended the last search without handing it over, left an
+// item behind a blocked one with every other worker asleep: a hang.
+TEST(thread_pool, regression_outside_items_never_wait_behind_a_blocked_worker) {
+    const int rounds = test_support::stress_iterations(150);
+    int hangs = 0;
+    for (int round = 0; round < rounds && hangs == 0; ++round) {
+        for (const std::size_t n :
+             {std::size_t{2}, std::size_t{3}, std::size_t{4}, std::size_t{8}}) {
+            stepwright::thread_pool pool(n);
+            for (int rep = 0; rep < 3; ++rep) {
+                std::atomic<std::size_t> started{0};
+                std::atomic<bool> give_up{false};
+                for (std::size_t i = 0; i < n; ++i) {
+                    pool.post([&started, &give_up, n] {
+                        started.fetch_add(1);
+                        while (started.load() < n && !give_up.load()) {
+                            std::this_thread::yield();
+                        }
+                    });
+                }
+                const auto limit = std::chrono::steady_clock::now() + 20s;
+                while (started.load() < n && std::chrono::steady_clock::now() < limit) {
+                    std::this_thread::yield();
+                }
+                if (started.load() < n) {
+                    ++hangs; // release the blocked items so the pool can shut down
+                    give_up.store(true);
+                }
+                pool.wait_idle();
+            }
+        }
+    }
+    EXPECT_EQ(hangs, 0);
+}
