@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose a use case or improvement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you solving?
+      description: Describe the use case and why existing primitives or adapters do not suffice
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Consider lifetime, cancellation, threading, allocation and compatibility trade-offs
+    validations:
+      required: true
