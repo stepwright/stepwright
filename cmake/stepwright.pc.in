@@ -1,0 +1,9 @@
+prefix=${pcfiledir}/@STEPWRIGHT_PC_PREFIX@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: stepwright
+Description: Explicit asynchronous state machines for C++20
+Version: @PROJECT_VERSION@
+Requires: @STEPWRIGHT_PC_REQUIRES@
+Libs: -pthread
+Cflags: -I${includedir} -std=c++20 -pthread@STEPWRIGHT_PC_DEFINITIONS@
