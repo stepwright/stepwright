@@ -11,19 +11,28 @@
 #   BUILD_TYPE=Release|Debug                  (default: Release)
 #   PLATFORM=linux/arm64|linux/amd64          (container only; default: host arch)
 #   EXAMPLE=<name>  BENCH_ARGS="..."  CMAKE_ARGS="..."  JOBS=<n>
+#   BENCH_OUT=<dir>  (bench) also write JSON results there, relative to the repo
+#                    root; scripts/bench_report.py turns them into tables
+#   BENCH_LABEL="..." (bench) platform label stored with the results
 
 COMPILER   ?=
 BUILD_TYPE ?= Release
 PLATFORM   ?=
 EXAMPLE    ?=
 BENCH_ARGS ?=
+BENCH_OUT  ?=
+BENCH_LABEL ?=
 CMAKE_ARGS ?=
 JOBS       ?=
 STEPWRIGHT_STRESS_SCALE ?= 1
 
 CI := bash scripts/ci.sh
-export COMPILER BUILD_TYPE EXAMPLE BENCH_ARGS CMAKE_ARGS JOBS
-export STEPWRIGHT_STRESS_SCALE
+# Recorded with benchmark results (the container cannot see the host's git or CPU).
+GIT_COMMIT := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
+HOST_CPU   := $(shell sysctl -n machdep.cpu.brand_string 2>/dev/null || sed -n 's/^model name.*: //p' /proc/cpuinfo 2>/dev/null | head -1)
+
+export COMPILER BUILD_TYPE EXAMPLE BENCH_ARGS BENCH_OUT BENCH_LABEL CMAKE_ARGS JOBS
+export STEPWRIGHT_STRESS_SCALE GIT_COMMIT
 
 # ---------------------------------------------------------------------------
 # Docker plumbing
@@ -43,6 +52,7 @@ DOCKER_RUN = $(DOCKER) run --rm $(TTY_FLAG) $(USER_FLAG) \
 	-v $(BUILD_VOLUME):/work/build \
 	-e BUILD_ROOT=/work/build -e HOME=/tmp \
 	-e COMPILER -e BUILD_TYPE -e EXAMPLE -e BENCH_ARGS -e CMAKE_ARGS -e JOBS \
+	-e BENCH_OUT -e BENCH_LABEL -e GIT_COMMIT -e BENCH_HOST_CPU="$(HOST_CPU) (container)" \
 	-e STEPWRIGHT_STRESS_SCALE \
 	$(IMAGE)
 

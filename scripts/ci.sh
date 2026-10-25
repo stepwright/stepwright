@@ -17,6 +17,8 @@
 #   JOBS        parallelism                           (default: CPU count)
 #   EXAMPLE     example to run for `run`
 #   BENCH_ARGS  extra Google Benchmark arguments
+#   BENCH_OUT   bench: also write <dir>/bench_*.json (relative to the repo root)
+#   BENCH_LABEL bench: platform label stored in the JSON (default: uname)
 #   CMAKE_ARGS  extra CMake configure arguments
 set -euo pipefail
 
@@ -24,7 +26,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
 TASK="${1:-}"
-[[ -n "${TASK}" ]] || { sed -n '2,25p' "$0"; exit 2; }
+[[ -n "${TASK}" ]] || { sed -n '2,27p' "$0"; exit 2; }
 shift || true
 
 OS="$(uname -s)"
@@ -147,13 +149,55 @@ case "${TASK}" in
     bench)
         configure bench Release -DSTEPWRIGHT_BUILD_TESTS=OFF -DSTEPWRIGHT_BUILD_EXAMPLES=OFF
         build
+        if [[ -n "${BENCH_OUT:-}" ]]; then
+            # JSON per benchmark executable, plus the context bench_report.py prints.
+            [[ "${BENCH_OUT}" = /* ]] || BENCH_OUT="${REPO_ROOT}/${BENCH_OUT}"
+            mkdir -p "${BENCH_OUT}"
+            cxx="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "${BUILD_DIR}/CMakeCache.txt")"
+            # The code-generation flags the benchmarks were actually compiled with.
+            flags="$(python3 - "${BUILD_DIR}/compile_commands.json" <<'PY' || true
+import json, shlex, sys
+for entry in json.load(open(sys.argv[1])):
+    if entry["file"].endswith("benchmarks/bench_engine.cpp"):
+        args = entry.get("arguments") or shlex.split(entry["command"])
+        keep = [a for a in args[1:] if a.startswith(("-O", "-D", "-std", "-f", "-m", "-stdlib", "-g"))
+                and not a.startswith(("-fdiagnostics", "-ferror-limit", "-fcolor", "-DBENCHMARK_"))]
+        print(" ".join(keep))
+        break
+PY
+)"
+            if [[ "${OS}" == "Darwin" ]]; then
+                cpu="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)"
+            else
+                cpu="$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1)"
+                [[ -n "${cpu}" ]] || cpu="$(uname -m)"
+            fi
+            [[ -z "${BENCH_HOST_CPU:-}" ]] || cpu="${BENCH_HOST_CPU}"
+            commit="${GIT_COMMIT:-$(git -C "${REPO_ROOT}" describe --always --dirty 2>/dev/null || echo unknown)}"
+            # Google Benchmark's --benchmark_context cannot carry '=' or ',' in values:
+            # write the build context next to the results instead.
+            COMPILER_VERSION="$("${cxx}" --version | head -1)" FLAGS="${flags}" CPU="${cpu}" \
+                COMMIT="${commit}" LABEL="${BENCH_LABEL:-$(uname -s) $(uname -m)}" \
+                OS_NAME="$(uname -srm)" ARGS="${BENCH_ARGS}" python3 - "${BENCH_OUT}/context.json" <<'PY'
+import json, os, sys
+keys = {"compiler": "COMPILER_VERSION", "flags": "FLAGS", "cpu": "CPU", "commit": "COMMIT",
+        "label": "LABEL", "os": "OS_NAME", "bench_args": "ARGS"}
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({k: os.environ[v] for k, v in keys.items()}, handle, indent=1)
+PY
+        fi
         found=0
         for b in "${BUILD_DIR}"/benchmarks/bench_*; do
             [[ -x "${b}" && -f "${b}" ]] || continue
             found=1
             log "$(basename "${b}")"
+            extra=()
+            if [[ -n "${BENCH_OUT:-}" ]]; then
+                extra+=("--benchmark_out=${BENCH_OUT}/$(basename "${b}").json"
+                        "--benchmark_out_format=json")
+            fi
             # shellcheck disable=SC2086
-            "${b}" ${BENCH_ARGS} "$@"
+            "${b}" ${BENCH_ARGS} ${extra[@]+"${extra[@]}"} "$@"
         done
         [[ ${found} -eq 1 ]] || log "no benchmarks built yet"
         ;;
