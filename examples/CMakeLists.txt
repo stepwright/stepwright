@@ -4,7 +4,8 @@
 
 set(STEPWRIGHT_EXAMPLES
     01_first_machine
-    02_timeouts)
+    02_timeouts
+    03_fan_out)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
