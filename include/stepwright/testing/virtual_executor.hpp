@@ -169,7 +169,7 @@ public:
         active_scope = &current;
         if (item != nullptr) {
             item->run(item);
-        } else {
+        } else if (timer != nullptr) { // always, here; spelled out for GCC's analyser
             timer->fire(timer);
         }
         active_scope = current.previous;
