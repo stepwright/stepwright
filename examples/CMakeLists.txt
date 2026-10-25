@@ -3,7 +3,8 @@
 # a trailing "// expect: <text>" comment (checked by check_example.cmake).
 
 set(STEPWRIGHT_EXAMPLES
-    01_first_machine)
+    01_first_machine
+    02_timeouts)
 
 add_custom_target(all_examples)
 foreach(name IN LISTS STEPWRIGHT_EXAMPLES)
