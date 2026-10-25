@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "test_support.hpp"
+#include <atomic>
 #include <barrier>
 #include <cstdio>
 #include <memory>
@@ -252,4 +253,79 @@ TEST(when_all, regression_parent_cancel_vs_completion_race) {
         }
     }
     std::printf("cancelled %d of %d\n", cancelled, iterations);
+}
+
+// M5: a when_all_range of 64 or more children counts completions in shards.
+// Children bound to a pool complete on many threads; the first failure, the
+// cancelled parent and success are all reported, never before the last child.
+TEST(when_all, regression_sharded_completion_on_a_pool) {
+    struct leaf : stepwright::machine<leaf> {
+        std::atomic<int>* finished = nullptr;
+        bool failing = false;
+        step begin() { return defer<&leaf::finish_up>(); }
+        step finish_up() {
+            finished->fetch_add(1, std::memory_order_relaxed);
+            return failing ? fail(error::make(errc::closed)) : done();
+        }
+    };
+    for (const std::size_t count : {std::size_t{64}, std::size_t{65}, std::size_t{1000}}) {
+        stepwright::thread_pool pool(8);
+        std::atomic<int> finished{0};
+        std::vector<leaf> leaves(count);
+        std::vector<stepwright::task*> children;
+        for (auto& l : leaves) {
+            l.bind(pool);
+            l.finished = &finished;
+            children.push_back(&l);
+        }
+        for (const auto policy :
+             {stepwright::when_all_policy::cancel_on_error, stepwright::when_all_policy::run_all}) {
+            stepwright::when_all_range all(children, policy);
+            for (int round = 0; round < test_support::stress_iterations(30); ++round) {
+                // Rounds cycle through: no failure, failures in different shards,
+                // and a parent cancelled while the children run.
+                const auto failing = static_cast<std::size_t>(round * 37) % (count + 1);
+                for (std::size_t i = 0; i < count; ++i) {
+                    leaves[i].failing = i == failing || (round % 4 == 1 && i == count - 1);
+                }
+                const bool cancel_parent = round % 4 == 3;
+                stepwright::cancel_source parent;
+                std::atomic<int> seen_at_completion{-1};
+                struct probe {
+                    std::atomic<int>* finished;
+                    std::atomic<int>* seen;
+                    test_support::receiver* receiver;
+                };
+                test_support::receiver receiver;
+                probe ctx{
+                    .finished = &finished, .seen = &seen_at_completion, .receiver = &receiver};
+                finished.store(0, std::memory_order_relaxed);
+                all.start({.fn =
+                               [](void* p, const error& e) noexcept {
+                                   auto& self = *static_cast<probe*>(p);
+                                   self.seen->store(self.finished->load(std::memory_order_relaxed),
+                                                    std::memory_order_relaxed);
+                                   self.receiver->finish(e);
+                               },
+                           .ctx = &ctx},
+                          parent.token());
+                if (cancel_parent) {
+                    parent.request_cancel();
+                }
+                receiver.wait();
+                EXPECT_EQ(receiver.calls, 1);
+                EXPECT_EQ(seen_at_completion.load(), static_cast<int>(count));
+                const bool any_failure = failing < count || round % 4 == 1;
+                if (any_failure) {
+                    EXPECT_TRUE(receiver.result.is(errc::closed)) << count << " " << round;
+                } else if (cancel_parent) {
+                    // Cancelled unless every child had already completed.
+                    EXPECT_TRUE(!receiver.result || receiver.result.is(errc::cancelled));
+                } else {
+                    EXPECT_FALSE(receiver.result) << count << " " << round;
+                }
+                pool.wait_idle();
+            }
+        }
+    }
 }

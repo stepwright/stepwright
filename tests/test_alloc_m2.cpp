@@ -3,6 +3,7 @@
 #include "counting_allocator.hpp"
 #include "test_support.hpp"
 #include <chrono>
+#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -92,6 +93,38 @@ TEST(alloc_m2, regression_zero_alloc_when_all_when_any) {
                 return r1.calls + r2.calls + (any.winner() == 0 ? 1 : 0);
             },
             3);
+    }
+}
+
+// M5: a large when_all_range allocates its completion shards once, at
+// construction; runs allocate nothing.
+TEST(alloc_m2, regression_zero_alloc_sharded_when_all_range) {
+    std::vector<test_support::sync_child> sync(100);
+    std::vector<test_support::async_child> async(4);
+    std::vector<stepwright::task*> children;
+    children.reserve(sync.size() + async.size());
+    for (auto& child : sync) {
+        children.push_back(&child);
+    }
+    for (auto& child : async) {
+        children.push_back(&child);
+    }
+    const auto constructions =
+        count_allocations([&] { stepwright::when_all_range probe(children); });
+    EXPECT_EQ(constructions, 2U); // the internal cancel source and the shards
+    stepwright::when_all_range all(children);
+    stepwright::cancel_source source;
+    for (const auto& token : {stepwright::cancel_token{}, source.token()}) {
+        expect_steady_state_zero_alloc(
+            [&] {
+                test_support::receiver receiver;
+                all.start(receiver.callback(), token);
+                for (auto& child : async) {
+                    child.finish();
+                }
+                return receiver.calls;
+            },
+            1);
     }
 }
 

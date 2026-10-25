@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <span>
+#include <vector>
 
 namespace stepwright {
 /// Structured fan-out over N children. Starts every child with an internal token
@@ -40,14 +41,22 @@ template <class... T>
 when_all(T&...) -> when_all<sizeof...(T)>;
 
 /// when_all over a runtime-sized span of children; the span (and the tasks) must
-/// stay valid until the last run completes. Same semantics as when_all<N>.
+/// stay valid until the last run completes. Same semantics as when_all<N>. With
+/// many children (64 or more) construction also allocates a small fixed set of
+/// completion counters, so children completing on many threads do not all update
+/// one counter.
 class when_all_range final : public detail::join_base {
 public:
     /// Join the given children (non-owning).
     explicit when_all_range(std::span<task* const> children,
                             when_all_policy policy = when_all_policy::cancel_on_error)
-        : join_base(all_mode(policy)) {
-        attach(children, nullptr);
+        : join_base(all_mode(policy))
+        , shard_storage_(children.size() >= shard_threshold ? shard_count : 0) {
+        attach(children, nullptr, shard_storage_.empty() ? nullptr : shard_storage_.data());
     }
+
+private:
+    // Allocated once, at construction (sized 0 or shard_count).
+    std::vector<shard> shard_storage_;
 };
 } // namespace stepwright

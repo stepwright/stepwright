@@ -18,9 +18,10 @@ enum class when_all_policy : std::uint8_t {
 namespace detail {
 // Shared engine of when_all / when_any.
 //
-// count_ packs two fields. Bits 0..39 count outstanding *units*: one per child,
-// one held by the starter until every child has been started, one held by the
-// when_any winner while it requests cancellation, and one held temporarily by
+// count_ packs two fields. Bits 0..39 count outstanding *units*: one per child
+// (one per shard for a sharded when_all, see `shard`), one held by the starter
+// until every child has been started, one held by the when_any winner while it
+// requests cancellation, and one held temporarily by
 // the parent-cancellation callback. Whoever releases the last unit completes the
 // combinator; holding a unit therefore keeps it alive across request_cancel()
 // and guarantees that no request on the internal source is still running when
@@ -48,17 +49,33 @@ protected:
     struct slot {
         join_base* owner = nullptr;
     };
+    // Completion counter for a share of a large when_all's children (child i uses
+    // shard i % count): concurrently completing children mostly hit different
+    // lines, and a shard releases one unit of count_ when its last child is done.
+    struct alignas(detail::cache_line) shard {
+        join_base* owner = nullptr;
+        std::atomic<std::uint64_t> left{0};
+    };
+    // Shard a when_all of at least this many children over this many shards.
+    static constexpr std::size_t shard_threshold = 64;
+    static constexpr std::size_t shard_count = 16;
 
     explicit join_base(mode m) : mode_(m) {}
     static mode all_mode(when_all_policy policy) noexcept {
         return policy == when_all_policy::run_all ? mode::all_run_all : mode::all_cancel_on_error;
     }
-    void attach(std::span<task* const> children, slot* slots) noexcept {
+    void attach(std::span<task* const> children, slot* slots, shard* shards = nullptr) noexcept {
         children_ = children;
         slots_ = slots;
+        shards_ = shards;
         if (slots_) {
             for (std::size_t i = 0; i < children_.size(); ++i) {
                 slots_[i].owner = this;
+            }
+        }
+        if (shards_) {
+            for (std::size_t i = 0; i < shard_count; ++i) {
+                shards_[i].owner = this;
             }
         }
     }
@@ -83,18 +100,34 @@ private:
         winner_ = npos;
         failed_.store(false, std::memory_order_relaxed);
         parent_cancelled_.store(false, std::memory_order_relaxed);
-        count_.store(n + (mode_ == mode::any ? 2 : 1), std::memory_order_relaxed);
+        if (shards_) {
+            STEPWRIGHT_ASSERT(n >= shard_count, "sharded when_all with too few children");
+            for (std::size_t s = 0; s < shard_count; ++s) {
+                shards_[s].left.store((n / shard_count) + (s < n % shard_count ? 1 : 0),
+                                      std::memory_order_relaxed);
+            }
+        }
+        const std::size_t units = shards_ ? shard_count : n;
+        count_.store(units + (mode_ == mode::any ? 2 : 1), std::memory_order_relaxed);
         linked_ = token.can_be_cancelled();
         if (linked_) {
             link_.arm(token, &on_parent_cancel, this);
         }
         const cancel_token child_token =
             mode_ == mode::all_run_all && !linked_ ? cancel_token{} : source_.token();
-        for (std::size_t i = 0; i < n; ++i) {
-            const completion target = mode_ == mode::any
-                                          ? completion{.fn = &on_child_any, .ctx = &slots_[i]}
-                                          : completion{.fn = &on_child_all, .ctx = this};
-            children_[i]->start(target, child_token);
+        if (mode_ == mode::any) {
+            for (std::size_t i = 0; i < n; ++i) {
+                children_[i]->start({.fn = &on_child_any, .ctx = &slots_[i]}, child_token);
+            }
+        } else if (shards_) {
+            for (std::size_t i = 0; i < n; ++i) {
+                children_[i]->start({.fn = &on_child_shard, .ctx = &shards_[i % shard_count]},
+                                    child_token);
+            }
+        } else {
+            for (std::size_t i = 0; i < n; ++i) {
+                children_[i]->start({.fn = &on_child_all, .ctx = this}, child_token);
+            }
         }
         release();
     }
@@ -103,18 +136,32 @@ private:
             finish();
         }
     }
+    // The failing child's unit is held until the request has returned.
+    void record_failure(const error& result) noexcept {
+        if (!failed_.exchange(true, std::memory_order_acq_rel)) {
+            result_ = result;
+            if (mode_ == mode::all_cancel_on_error) {
+                source_.request_cancel();
+            }
+        }
+    }
     static void on_child_all(void* context, const error& result) noexcept {
         auto& self = *static_cast<join_base*>(context);
         if (result) {
-            // The failing child's unit is held until the request has returned.
-            if (!self.failed_.exchange(true, std::memory_order_acq_rel)) {
-                self.result_ = result;
-                if (self.mode_ == mode::all_cancel_on_error) {
-                    self.source_.request_cancel();
-                }
-            }
+            self.record_failure(result);
         }
         self.release();
+    }
+    static void on_child_shard(void* context, const error& result) noexcept {
+        auto& part = *static_cast<shard*>(context);
+        if (result) {
+            part.owner->record_failure(result);
+        }
+        // Only the shard's last child may touch the combinator afterwards (and a
+        // successful child touches nothing else: owner is read only by the last).
+        if (part.left.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            part.owner->release();
+        }
     }
     static void on_child_any(void* context, const error& result) noexcept {
         auto& entry = *static_cast<slot*>(context);
@@ -160,6 +207,7 @@ private:
 
     std::span<task* const> children_;
     slot* slots_ = nullptr;
+    shard* shards_ = nullptr;
     completion receiver_;
     cancel_source source_;
     cancel_registration link_;
