@@ -1,46 +1,24 @@
-# Provenance
+# Design provenance
 
-stepwright is written from scratch against its own design specifications. This file
-records, per component, what was built and which public prior art informed it.
+stepwright was designed and implemented independently. Its implementation is original
+MIT-licensed code; the references below explain the public ideas and vocabulary
+that informed it, not code copied into the library. Contributors must have the
+right to contribute their changes under MIT and cite relevant prior art here.
 
-## Public prior art consulted
-- Boost.Asio / Networking TS: composed asynchronous operations, completion
-  handlers, executors and strands.
-- cppcoro (Lewis Baker): `async_manual_reset_event`, `shared_task`,
-  `async_mutex` naming and semantics.
-- P2300 `std::execution` / libunifex: `when_all`, stop tokens and structured
-  cancellation.
-- Rust `Future`/`poll` and its compiler-generated state machines.
-- Go channels: bounded/unbounded channels, close semantics.
-- Classic "trampolined style" / driver-loop interpreters for stack-safe
-  continuation chains.
-- Work stealing: Blumofe and Leiserson, "Scheduling Multithreaded Computations
-  by Work Stealing" (JACM 1999); Dmitry Vyukov, "Scalable Go Scheduler Design
-  Doc" (2012); Carl Lerche, "Making the Tokio scheduler 10x faster" (Tokio blog,
-  2019).
-- splitmix64: Steele, Lea and Flood, "Fast Splittable Pseudorandom Number
-  Generators" (OOPSLA 2014).
-- Lock striping and sharded counters: Herlihy and Shavit, "The Art of
-  Multiprocessor Programming" (2008), chapters on concurrent hashing and
-  counting.
-- Multiplicative (Fibonacci) hashing: Knuth, "The Art of Computer Programming",
-  vol. 3, §6.4.
-- The flag/flag handshake under sequential consistency: Dijkstra, "Solution of a
-  problem in concurrent programming control" (CACM 1965, Dekker's algorithm).
-- C++20 coroutines and symmetric transfer: P0913R1 "Add symmetric coroutine
-  control transfer" and Lewis Baker, "C++ Coroutines: Understanding Symmetric
-  Transfer" (blog, 2020).
-- Google Benchmark user guide (repetitions, aggregates, JSON output, real time).
+| Component | Public influences |
+|---|---|
+| Machine engine | Classic trampolined/driver-loop interpreters for constant-stack continuation chains; Rust's explicit `Future::poll` state-machine model. [Boost.Asio composed operations](https://www.boost.org/doc/libs/latest/doc/html/boost_asio/overview/composition.html) informed the task/completion/executor vocabulary. |
+| Cancellation and joins | [P2300](https://wg21.link/p2300) and libunifex's structured `when_all`/stop-token model. Intrusive registration and stack-resident invocation records are independently designed. The request/activation flag handshake uses the sequential-consistency principle of Dekker's algorithm, described in Dijkstra, “Solution of a Problem in Concurrent Programming Control” (CACM, 1965). |
+| Wait primitives | [cppcoro](https://github.com/lewissbaker/cppcoro)'s public descriptions of `async_manual_reset_event`, `shared_task` and `async_mutex` informed naming and semantics. The publish/arm/resolve protocol and intrusive hand-off trampoline are independent designs. |
+| Cancellation stripes and join shards | Herlihy and Shavit, *The Art of Multiprocessor Programming* (2008): lock striping and distributed counters. Knuth, *The Art of Computer Programming*, vol. 3, §6.4: multiplicative/Fibonacci hashing for stripe selection. |
+| Timers | Fredman, Sedgewick, Sleator and Tarjan, “The Pairing Heap: A New Form of Self-Adjusting Heap” (Algorithmica, 1986). The sequence tie-break, firing records and structured cancellation are independent designs. |
+| Pull streams | Rust's stream polling/readiness model; [Go channels](https://go.dev/ref/spec#Channel_types) for bounded queues and close/drain semantics. The readiness-round merge and per-slot-reader-count broadcast ring are independent designs. |
+| Thread pool | Blumofe and Leiserson, “Scheduling Multithreaded Computations by Work Stealing” (JACM, 1999); Vyukov, [“Scalable Go Scheduler Design Doc”](https://golang.org/s/go11sched) (2012), for periodic global checks and delayed single-item stealing; Lerche, [“Making the Tokio scheduler 10x faster”](https://tokio.rs/blog/2019-10-scheduler), for bounded local queues, batching, search caps and search hand-over. The guard, conditional sleep transition, idle counters and liveness proofs are independent designs. |
+| Deterministic executor | Steele, Lea and Flood, “Fast Splittable Pseudorandom Number Generators” (OOPSLA, 2014), for splitmix64. Virtual time, ready-set arbitration and integration with the intrusive timer protocol are independent designs. |
+| Debug registry | Intrusive lists and locked snapshots; compile-time type/step spellings use compiler-provided function-signature strings, not RTTI. |
+| Benchmarks | [Google Benchmark user guide](https://github.com/google/benchmark/blob/main/docs/user_guide.md), for repetitions, aggregate statistics, JSON and real-time measurement. The independently written coroutine baseline follows [P0913R1](https://wg21.link/p0913r1) and Baker's [symmetric-transfer explanation](https://lewissbaker.github.io/2020/05/11/understanding_symmetric_transfer). |
+| Packaging and documentation tooling | CMake's documented interface-target/install/export model, GNUInstallDirs and CMakePackageConfigHelpers; Doxygen's documented warning and HTML-generation interface; Git's NUL-delimited tracked-file protocol. Consumer projects, snippet extraction and the fail-closed host/container reference scanner are written for this repository. |
 
-## Log
-| Date | Milestone | Component(s) | Spec | Notes |
-|---|---|---|---|---|
-| 2026-10-24 | M0 | Build system, tooling, CI, formatting config, license | Project plan | Repository started fresh; build/CI scripts reviewed and adapted; formatting and lint configs written new. |
-| 2026-10-24 | M0.5 | Linux dev container, single CI entry script, CI workflows | Project plan | Ubuntu 24.04 image with pinned GCC 14 / Clang 20 toolchain; `scripts/ci.sh` shared by local runs and CI; dependencies pinned by URL + SHA-256. |
-| 2026-10-24 | M1 | Error values, completion, intrusive cancellation, executors, tasks, machine driver, type names, logging shim, tests and engine benchmarks | `.claude/plans/spec-M1-core.md` | Independently implemented from the milestone contract and project overview; no external implementation or public prior-art source consulted. Ownership and lifetime protocol documented in `docs/M1-concurrency.md`. |
-| 2026-10-24 | M1 round 2 | Conditional park wakes, O(1) cancellation unlinking, child-completion fast path, lifetime checks, scalable stress tests and shared-token benchmark, API comments | M1 §12 and `review-M1.md` | Independent changes based on the review and supplied defect probes; no external implementation or prior-art source consulted. Protocol and lifetime reasoning updated in `docs/M1-concurrency.md`. |
-| 2026-10-24 | M1 round 3 | Independent buffered wake/child/defer readiness, SC cancellable park handshake, request/reply regressions and updated API semantics | M1 §13 and review round 2 | Independent fixes based on the amended contract and supplied `reply_race` probe; no external implementation/prior-art source consulted. Updated ownership and SC-order proof in `docs/M1-concurrency.md`. |
-| 2026-10-24 | M2 | Hand-off trampoline, waiter protocol, `event`, `shared_task`, `async_mutex`, `async_shared_mutex`, `when_all`/`when_any`, timer services (steady, manual), `delay`, `with_deadline`, `fn_task`/`make_task`, `finally_task`, `reschedule`, `cancel_source::reset`, tests and primitive benchmarks | `.claude/plans/spec-M2-primitives.md` | Implemented from the milestone contract; no implementation source code was consulted. Semantics follow the public descriptions already listed above (cppcoro's async event/mutex/shared task, P2300 `when_all` and stop tokens). The timer queue is a textbook pairing heap (Fredman, Sedgewick, Sleator and Tarjan, "The pairing heap: a new form of self-adjusting heap", Algorithmica 1986) with a sequence-number tie-break. Design and race analysis in `docs/M2-primitives.md`. |
-| 2026-10-24 | M3 | `source<T>`/`pull<T>` protocol, `source_machine`, `channel`, `merge`/`merge_range`, `broadcast`, `empty`/`just`/`from_range`/`generate`/`interval`, `for_each`; shared `detail::wait_core`; internal-only `cancel_source` reset; permanent chaos test; stream benchmarks | `.claude/plans/spec-M3-streams.md` | Implemented from the milestone contract; no implementation source code was consulted. The pull/readiness split follows the public description of Rust's `Stream::poll_next`/waker model already listed above; channel close semantics follow Go channels (listed above). The broadcast ring with per-slot reader counts is an independent design. Design and race analysis in `docs/M3-streams.md`. |
-| 2026-10-24 | M4 | `thread_pool`, `testing::virtual_executor`, live task registry (`debug/live_tasks.hpp`, `STEPWRIGHT_TRACK_TASKS`), `detail::value_name`; immortal `detail::cancelled_error()`; scenario, pool, virtual-executor, registry, static-lifetime and allocation tests; runtime benchmarks | `.claude/plans/spec-M4-runtime.md` | Implemented from the milestone contract; no implementation source code was consulted. Public designs relied on: per-worker queues with stealing of half a victim's queue (Blumofe and Leiserson); a bounded per-worker ring with overflow of half to a global injection queue, a cap on concurrently searching workers, the "last searcher wakes a sleeper" rule and not waking for a worker's own next item (the Tokio scheduler article); a periodic global-queue check every 61 ticks and delayed stealing of a worker's single next item (Vyukov's Go scheduler design doc). The idle protocol's ordering argument, the `wait_idle` counters and the virtual executor are independent designs; its generator is splitmix64 (Steele, Lea and Flood). Design and race analysis in `docs/M4-runtime.md`. |
-| 2026-10-25 | M5 | Scalable cancellation state (striped spin locks, separate reference count, lazy machine registration at the first park, `bind`/`activate`), sharded `when_all_range` completion counters, thread-pool polling changes (`head_seen`, field layout, quarter searcher cap) and a pool liveness fix (moved items announced with an RMW, search hand-over after a sleeper's rescan, eager single-item stealing before sleeping); `BM_pool_fan_out_fan_in_work`, C++20 coroutine baseline, `scripts/bench_report.py`, `BENCH_OUT`, `benchmarks/README.md`, `docs/benchmarks.md`; ten examples with CTest checks; cancellation-scaling tests | `.claude/plans/spec-M5-examples-performance.md` | Implemented from the milestone contract; no implementation source code was consulted. Lock striping and per-shard counters are textbook techniques (Herlihy and Shavit); stripe selection uses Knuth's multiplicative hashing; the request/activation race is closed with a Dekker-style SC flag/flag handshake. The coroutine baseline follows the standard's coroutine interface and the public description of symmetric transfer (P0913, Lewis Baker's article). The search cap change was tested against the Go scheduler's busy-relative cap (Vyukov, listed above) and kept simpler. Design, proofs and measurements in `docs/M5-performance.md`. |
+External development dependencies retain their own licenses: GoogleTest,
+Google Benchmark and optional spdlog. None is required by the default installed
+library; stepwright's production dependency is the C++20 standard library and threads.
