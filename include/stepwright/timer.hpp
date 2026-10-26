@@ -236,6 +236,9 @@ private:
 /// completion through the hand-off trampoline). Thread-safe. Destruction stops
 /// and joins the thread; entries still scheduled then never fire (Debug asserts
 /// that none are scheduled). Construction starts a thread and may throw.
+/// After observing a callback's effects, an owner on another thread may destroy
+/// the service even if schedule() has not returned. No other timers or calls may
+/// remain outstanding; now() alone is not a destruction signal.
 class steady_timer_service final : public timer_service {
 public:
     /// Start the timer thread.
@@ -258,13 +261,12 @@ public:
     clock::time_point now() const noexcept override { return clock::now(); }
     /// See timer_service::schedule. Wakes the thread only if e is the new earliest.
     void schedule(entry& e, clock::time_point deadline) noexcept override {
-        bool earliest = false;
-        {
-            const std::lock_guard lock(mutex_);
-            queue_.schedule(e, deadline);
-            earliest = queue_.top() == &e;
-        }
-        if (earliest) {
+        const std::lock_guard lock(mutex_);
+        queue_.schedule(e, deadline);
+        if (queue_.top() == &e) {
+            // The worker cannot fire e before this call's final mutex unlock.
+            // Notifying after unlocking would let the callback's observer destroy
+            // wake_ while this thread was still notifying it.
             wake_.notify_one();
         }
     }
