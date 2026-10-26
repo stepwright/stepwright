@@ -124,6 +124,200 @@ has not exited yet. Finish timer/I/O producers and pool-bound machines before
 shutdown: a late foreign continuation is such an outside post. Do not rely on
 extra workers surviving shutdown to satisfy blocking dependencies.
 
+## Teardown and lifetimes
+
+A delivered completion is a lifetime boundary, not just a state change. After
+invoking a receiver, the library never accesses the completing task/waiter again;
+after invoking an item or timer callback, it never accesses that intrusive node
+again. The observer must synchronise with the completion's effects (for example,
+a release store in the receiver and an acquire load by the owner). It may then
+destroy the completed object, even before the delivering call returns, subject
+to the type's other preconditions. Batched releases require every outstanding
+wait to complete; a source's cancelled readiness wait does not settle a suspended
+producer. Stop independent wakers and other producers before reclamation: a raw
+pointer and a thread-safe member function do not acquire lifetime ownership.
+
+The same rule applies to shared runtime resources: after observing its last
+item/callback, an owner on another thread may destroy the pool/timer service even
+if the publishing `post`/`schedule` has not returned. These services synchronise
+any remaining internal accesses before destroying their members. Destruction from
+their own worker/callback is forbidden. No new outside post may begin at or after
+shutdown starts; the permitted overlap is the suffix of an already-published
+post, not an uncoordinated producer or a later continuation. Settle all scheduled
+timers, registered waiters and active operations before reclaiming their owners.
+
+### Outside pool posts
+
+Outside posts append/count their item and consume a queue-protected wake flag
+while holding the injection lock. With no wake needed, releasing that lock is
+the post's final pool access. Workers must acquire it to dequeue the item, including timed-guard
+rescans. Thus every poster access happens-before the unlock, which synchronises
+with dequeue, then execution, then the owner's observation and destruction.
+
+A post needing an out-of-lock wake increments `outside_waking_` **before**
+releasing injection. After releasing it, the poster wakes a worker and performs
+a release decrement as its **last pool access**. No notification follows that
+decrement. Shutdown joins workers, then acquire-waits for the counter to become
+zero before any members can be destroyed. The increment happens-before dequeue,
+execution and the owner's observation, so the destroying thread cannot miss the
+pin by reading the initial zero. Joining workers likewise orders publication of
+the items drained during shutdown. No new outside posts are permitted, so zero
+means every pinned suffix has ended. Atomic RMW release sequences make the final
+acquire synchronise with every poster's release, even with out-of-order returns.
+All suffix accesses therefore happen-before member destruction. The counter is
+assumed not to overflow (fewer than 2^64 simultaneous waking posts).
+
+The pin is deliberately limited to posts that need wake-up work. Ordinary posts
+have no extra RMW, lock or allocation, and worker-local posts never use it. The
+counter occupies a separate cache line. Shutdown yields while waiting, without a
+per-post notification that could itself race reclamation. Merely moving notify
+under the sleeper mutex would not suffice: the idle load and mutex acquisition
+also need to precede publication or be protected. Holding injection through a
+wake is safe but needlessly blocks takers; pinning the rare wake suffix keeps
+the injection critical section short, without nested injection/sleeper locks.
+
+`inject_needs_wake_` starts **true**. Every forced injection scan that finds no
+item rearms it under the injection lock if the quarter-of-workers search budget
+has room (`4 * searching < count_`, the same budget as `start_searching`). Such a
+scan is mandatory between
+sleep registration and actually waiting; timed-guard and final shutdown scans
+use it too. The first outside post consumes true, pins the pool and promises a
+wake. Subsequent posts see false and coalesce behind that wake/search obligation,
+without reading the contended shared idle word on the posting path.
+
+This preserves the no-lost-wake edge directly on the queue lock. If the forced
+empty scan precedes publication, the post sees its flag and wakes; if publication
+precedes the scan, the scan takes the item. A previous post that consumed the
+flag either still owes its pinned wake, or has handed the search to a worker.
+Before that worker can sleep after draining work, its own mandatory empty rescan
+rearms the flag, or finds the search budget already full. In the latter case at
+least one other searcher remains responsible: before the last searcher sleeps,
+its own sleep-registration RMW publishes zero searching and its locked empty
+rescan rearms the flag. The queue lock orders a previous such rescan before a
+post, or makes the rescan take that post's item. Existing batch/steal search
+hand-over and timed guards cover a
+taker that blocks in user work, including work moved to a local ring. A wake that
+finds no sleeper is harmless: an awake worker will scan, or its future sleep
+registration is followed by the locked rescan. Other forced misses may rearm the
+flag conservatively while a worker searches; at most one subsequent post consumes
+each such rearming, so extra wakes are bounded by scans, not by the posting rate.
+
+There is no new polling, timed wait or system call in the idle path, and the guard
+period and sleep-mode selection are unchanged. An already-required empty locked
+scan just stores one flag in the queue's metadata line. Completely idle pools
+still sleep indefinitely with zero recurring work. Worker-local ring operations
+and overflow/movement wake-ups are unchanged; workers themselves are protected
+by shutdown's join. `wait_idle()` may
+return before a pinned suffix ends; destruction and explicit `shutdown()` wait
+for it. An already-claimed/expired sleeper can make `wake_one` a no-op; its pin
+is still released on that path.
+
+The foreign single-item injection helper is separate from worker batch overflow.
+Neither it nor `post()` is forced inline: forcing them into callers' posting
+loops made one-worker outside posting about 25% slower on AppleClang. On
+AppleClang the persistent worker loop is kept out of the thread-start closure
+and aligned, avoiding a measured hot-loop code-generation regression when the
+foreign branch grew. These are code-generation hints only:
+they add no worker-local atomics or allocations and do not change dispatch,
+counter ordering, guard behaviour or class layout between Debug and Release.
+
+Outside posted-count stores are relaxed under injection locking. This does not
+weaken `wait_idle`: the store precedes injection's release unlock, the worker's
+acquire dequeue, and its release completion counter. `wait_idle` acquire-reads
+completions **before** reading posted counts, so any completion it counts makes
+its post count happen-before that later load; atomic coherence cannot return a
+count predating the acquired completion's post. Earlier calls ordered by the
+caller are likewise visible; concurrent outside calls may be included or not as
+documented. The injection unlock already publishes both node and count, so a
+second release store on the count itself would be redundant. Local count and
+ring publication ordering, and the lifetime pin's release/acquire ordering, are
+unchanged.
+
+Concurrent callers of `wait_idle`/`shutdown` must still
+return before another caller destroys the pool: those calls are not items and do
+not hold automatic lifetime ownership.
+
+### Steady timers
+
+`schedule` inserts and, if necessary, notifies **under the same mutex**. Its final
+service access is the mutex unlock. The worker must acquire that mutex before
+removing the entry, so that unlock happens-before the callback and its observer.
+There can be no outstanding scheduler notification when destruction is justified
+by that callback. Notifying a condition variable under its predicate mutex is not
+invoking user code under a lock: callbacks still run unlocked.
+
+`cancel` removes/rechecks entries under the mutex and returns via a final unlock;
+foreign callbacks are waited for. The worker uses a stack firing record and never
+touches the entry after invoking it. Its later record cleanup and waiter
+notification are safe because the destructor joins the worker before destroying
+the queue, mutex or condition variables. The destructor's own stop notification
+precedes that join. Other concurrent cancellations must return before service
+destruction; observing the callback is not a join of unrelated API callers.
+
+### Publish, then arm cancellation
+
+`wait_core::prepare` leaves `armed` clear for a cancellable token. A resolver may
+publish its result meanwhile, but cannot deliver the receiver until `arm` sets
+`armed` after binding and activating cancellation. The atomic phase handshake
+therefore keeps a cancellable wait alive through arming; setting `armed` (or the
+resulting finish) is the starter's final object access.
+
+For a token that cannot cancel, `prepare` sets `armed` **before publication**.
+The wait may then complete, and its owner may destroy it, before publication
+returns. Every starter must test its parameter or a local owning token copy and
+**skip `arm` entirely** for that token. Reading a token back from the object, or
+calling even a no-op member on it, is already too late. This applies after timer
+scheduling (`delay`, interval), waiter-list unlocks (event, both mutexes, channel
+send/readiness, broadcast publish/subscription), shared-task publication/inner
+start, and the source-machine readiness CAS.
+
+Merge already tests a local `cancellable` value after releasing its starter unit:
+an empty-token consumer can have completed at that release, while a cancellable
+one is still protected by the phase handshake. Joins arm the parent link before
+starting children, and deadlines retain a starter unit through timer publication,
+parent linking and inner start. Their final unit release is their last access,
+even with an empty parent token; these unit barriers must not be removed. The
+other source-machine arming site, `set_token`, is configuration while not
+suspended, not publication of a readiness wait. It must still replace/disarm the
+previous registration when given an empty token.
+
+The teardown regressions force delay and interval callbacks on another thread
+before `schedule` returns and destroy the operation inside completion. They check
+both empty tokens (delivery before return) and cancellable tokens (delivery held
+until arming). Linux ASan/UBSan catches the invalid post-lifetime member call in
+the unfixed delay even though the old empty-token `arm` body did no work.
+
+### Queries and caller-driven runtimes
+
+Queries are snapshots, **not destruction signals**. In particular `event::is_set`
+and `shared_task::is_done` can observe publication before waiter detachment or
+delivery finishes. Channel/broadcast `is_closed`, channel `size`, subscription
+counts and executor/timer pending counts do not prove notifications or callbacks
+have finished. A mutex-protected query only orders the protected state, not work
+done after unlocking. Cancellation's requested flag does not prove callback
+dispatch has finished; live-registry absence does not prove a receiver has run.
+Immutable size/capacity/home/seed/token metadata likewise grants no lifetime
+ownership. Use completions or externally synchronise the changing calls instead;
+this keeps these queries cheap and preserves their existing snapshot semantics.
+
+Caller-driven runtimes have an additional lifetime precondition: keep a manual
+executor alive through `run_all`, a manual timer service through `advance*`, and a
+virtual executor through every `run_*` call. These loops must revisit their state
+after a callback and have no background thread for their destructors to join.
+They may deliver a callback that destroys its **node**, not their service. Manual
+timer operations are actually thread-safe (including foreign cancellation), while
+virtual execution is single-driver, with same-thread nesting supported; neither
+property permits destruction during a driving call. `post`/`schedule` publication
+in these runtimes ends with the queue-lock unlock, before another driver can take
+the node. Tests exercise concurrent publication and node reclamation, keeping
+caller-driven services alive until their driving calls return.
+
+`test_teardown` exercises heap reclamation on a different thread **before** joining
+the producer, including pool rescans, due timers, waiter batches, cancellation,
+streams, joins, deferrals and registry snapshots. Joining first would hide a
+missing happens-before edge. Linux ThreadSanitizer detects the original
+notification/destruction races; macOS sanitizers alone are not sufficient.
+
 ## Deterministic virtual executor
 
 `testing::virtual_executor` is both an executor and timer service. Posts and due

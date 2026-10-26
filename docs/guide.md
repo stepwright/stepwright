@@ -351,6 +351,14 @@ logging may allocate or block. Prefer the registry and breakpoints first.
 7. **Blocking exhausts workers.** Liveness with an idle worker is not permission
    to block every worker or wait inside a same-thread trampoline callback.
 8. **Tracking is an ABI choice.** Never mix layouts across translation units.
+9. **A query is not completion.** `is_set`, `is_done`, `is_closed`, queue sizes,
+   cancellation flags and registry snapshots are not destruction signals. Observe
+   the relevant completions with proper cross-thread synchronisation, and settle
+   all other users before reclaiming storage. After observing the last item/timer
+   callback, you may destroy its pool/steady timer service on another thread even
+   if the publishing `post`/`schedule` has not returned. Do not start new outside
+   posts during shutdown. Caller-driven `run_*`/`advance*` loops must return before
+   their runtime is destroyed. See [teardown and lifetimes](design/runtime.md#teardown-and-lifetimes).
 
 ## FAQ
 
