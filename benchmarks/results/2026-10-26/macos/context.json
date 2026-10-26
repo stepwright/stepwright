@@ -1,0 +1,11 @@
+{
+ "compiler": "Apple clang version 16.0.0 (clang-1600.0.26.6)",
+ "flags": "-O3 -DNDEBUG -D_FORTIFY_SOURCE=2 -std=c++20 -fno-omit-frame-pointer",
+ "cpu": "Apple M4 Max",
+ "commit": "49fdca1",
+ "label": "macOS (Apple M4 Max, AppleClang 16)",
+ "os": "Darwin 24.6.0 arm64",
+ "bench_args": "--benchmark_min_time=1s --benchmark_repetitions=10 --benchmark_report_aggregates_only=true",
+ "source_sha256": "a96cba8525d78b7eddf0ec4dd9a7d15031786365f7e5f0f3b25e4bcad56e8095",
+ "host_load_avg": "4.13 / 5.45 / 4.77"
+}

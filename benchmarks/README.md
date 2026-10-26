@@ -28,9 +28,9 @@ python3 scripts/bench_report.py build/bench/macos build/bench/linux --update doc
 ## Method
 
 - **Repetitions.** The default `BENCH_ARGS` are `--benchmark_min_time=1s
-  --benchmark_repetitions=5 --benchmark_report_aggregates_only=true`: each
-  benchmark runs at least one second, five times, and the report gives the median
-  of the five and the coefficient of variation (CV). The median resists the odd
+  --benchmark_repetitions=10 --benchmark_report_aggregates_only=true`: each
+  benchmark runs at least one second, ten times (including all threaded cases),
+  and the report gives the median and coefficient of variation (CV). The median resists the odd
   run disturbed by the operating system; a CV above a few percent means the number
   should be read as a range.
 - **Unit.** Every benchmark reports items per second; the tables show nanoseconds
@@ -56,9 +56,15 @@ python3 scripts/bench_report.py build/bench/macos build/bench/linux --update doc
   they swing by up to 2× with how the two threads are scheduled. Compare versions
   with alternating runs on an idle machine, not across sessions.
 
+For publication, stop builds, sanitizer jobs and container work before measuring;
+run native and container suites sequentially, not concurrently. Context records
+the host load average as well as the benchmark OS's load (the VM's load alone
+does not describe a Mac's desktop processes). A SHA-256 over the library headers
+and benchmark sources identifies the measured source even in an uncommitted tree.
+
 ## What each benchmark measures
 
-### `bench_engine.cpp`: the machine engine (M1)
+### `bench_engine.cpp`: the machine engine
 
 | Benchmark | Item | Notes and baseline |
 |---|---|---|
@@ -106,7 +112,7 @@ Caveats, for a fair reading:
   design of its own), cancellation (C++20 coroutines have none built in) and
   frame sizes.
 
-### `bench_primitives.cpp`: synchronisation primitives and combinators (M2)
+### `bench_primitives.cpp`: synchronisation primitives and combinators
 
 | Benchmark | Item | Notes and baseline |
 |---|---|---|
@@ -120,7 +126,7 @@ Caveats, for a fair reading:
 | `BM_timer_schedule_cancel_manual`, `_steady` | one schedule + cancel | Pairing heap; the steady service also signals its thread when the entry becomes the earliest. |
 | `BM_with_deadline_inner_first` | one `with_deadline` run whose inner task wins | Includes scheduling and cancelling the timer. |
 
-### `bench_streams.cpp`: streams (M3)
+### `bench_streams.cpp`: streams
 
 | Benchmark | Item | Notes and baseline |
 |---|---|---|
@@ -132,7 +138,7 @@ Caveats, for a fair reading:
 | `BM_source_machine_emit/1000` | one item emitted by a `source_machine` and pulled | Baseline: `BM_baseline_vector_loop/1000`, summing a `std::vector`. |
 | `BM_for_each_generate/1000` | one item from `generate` through `for_each` | |
 
-### `bench_runtime.cpp`: thread pool and virtual executor (M4, M5)
+### `bench_runtime.cpp`: thread pool and virtual executor
 
 | Benchmark | Item | Notes and baseline |
 |---|---|---|
@@ -147,5 +153,12 @@ Caveats, for a fair reading:
 
 The fan-out benchmarks measure the cost of structure, not of work: their leaves
 do nothing, so a single starting worker posting 10,000 tiny items is the
-bottleneck, and adding workers can only add contention. `docs/M5-performance.md`
+bottleneck, and adding workers can only add contention. `docs/design/performance.md`
 explains what was done to keep 8 workers within 1.5× of one.
+
+`BM_shared_token_park_workers/T` starts and wakes 128 machines per worker on a
+single shared cancellation token. A start gate ensures concurrent registration;
+the timed region includes pool dispatch, registration and deregistration, not
+construction. It reports wall time per machine and `state_bytes` (the source's
+shared allocation). The [layout comparison](../docs/design/performance.md)
+explains why the default keeps eight stripes despite their memory cost.

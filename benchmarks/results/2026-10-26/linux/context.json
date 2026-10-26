@@ -1,0 +1,11 @@
+{
+ "compiler": "g++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0",
+ "flags": "-O3 -DNDEBUG -D_FORTIFY_SOURCE=2 -std=c++20 -fno-omit-frame-pointer -fmax-errors=3",
+ "cpu": "Apple M4 Max (container)",
+ "commit": "49fdca1",
+ "label": "Linux arm64 (container, GCC 14)",
+ "os": "Linux 7.0.14-linuxkit aarch64",
+ "bench_args": "--benchmark_min_time=1s --benchmark_repetitions=10 --benchmark_report_aggregates_only=true",
+ "source_sha256": "a96cba8525d78b7eddf0ec4dd9a7d15031786365f7e5f0f3b25e4bcad56e8095",
+ "host_load_avg": "3.04 4.55 4.72"
+}

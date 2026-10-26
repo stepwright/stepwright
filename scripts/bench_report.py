@@ -133,8 +133,10 @@ def render(runs):
     out.append("| | " + " | ".join(labels) + " |")
     out.append("|---|" + "---|" * len(runs))
     rows = [("CPU", "cpu"), ("OS", "os"), ("Compiler", "compiler"), ("Flags", "flags"),
-            ("Commit", "commit"), ("Date", "date"), ("CPUs", "num_cpus"),
-            ("Load average", "load_avg"), ("Arguments", "bench_args")]
+            ("Commit", "commit"), ("Source SHA-256", "source_sha256"),
+            ("Date", "date"), ("CPUs", "num_cpus"),
+            ("Load average", "load_avg"), ("Host load average", "host_load_avg"),
+            ("Arguments", "bench_args")]
     for title, key in rows:
         values = []
         for run in runs:

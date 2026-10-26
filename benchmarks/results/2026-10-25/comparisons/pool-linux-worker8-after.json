@@ -1,0 +1,82 @@
+{
+  "context": {
+    "date": "2026-10-25T09:31:35+00:00",
+    "host_name": "2188891996be",
+    "executable": "bench_runtime",
+    "num_cpus": 16,
+    "mhz_per_cpu": 48,
+    "cpu_scaling_enabled": false,
+    "caches": [
+    ],
+    "load_avg": [2.11279,1.66602,1.55371],
+    "library_version": "v1.9.1",
+    "library_build_type": "release",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_pool_post_from_worker/8/real_time_mean",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_pool_post_from_worker/8/real_time",
+      "run_type": "aggregate",
+      "repetitions": 10,
+      "threads": 1,
+      "aggregate_name": "mean",
+      "aggregate_unit": "time",
+      "iterations": 10,
+      "real_time": 9.7713706788929366e+05,
+      "cpu_time": 2.9158859515570948e+04,
+      "time_unit": "ns",
+      "items_per_second": 1.6374922824384129e+09
+    },
+    {
+      "name": "BM_pool_post_from_worker/8/real_time_median",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_pool_post_from_worker/8/real_time",
+      "run_type": "aggregate",
+      "repetitions": 10,
+      "threads": 1,
+      "aggregate_name": "median",
+      "aggregate_unit": "time",
+      "iterations": 10,
+      "real_time": 9.7737327058828087e+05,
+      "cpu_time": 2.9971875778546724e+04,
+      "time_unit": "ns",
+      "items_per_second": 1.6370409001907942e+09
+    },
+    {
+      "name": "BM_pool_post_from_worker/8/real_time_stddev",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_pool_post_from_worker/8/real_time",
+      "run_type": "aggregate",
+      "repetitions": 10,
+      "threads": 1,
+      "aggregate_name": "stddev",
+      "aggregate_unit": "time",
+      "iterations": 10,
+      "real_time": 6.0093676802885566e+03,
+      "cpu_time": 2.4579858785010720e+03,
+      "time_unit": "ns",
+      "items_per_second": 1.0059925886247963e+07
+    },
+    {
+      "name": "BM_pool_post_from_worker/8/real_time_cv",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_pool_post_from_worker/8/real_time",
+      "run_type": "aggregate",
+      "repetitions": 10,
+      "threads": 1,
+      "aggregate_name": "cv",
+      "aggregate_unit": "percentage",
+      "iterations": 10,
+      "real_time": 6.1499741211019105e-03,
+      "cpu_time": 8.4296365473021939e-02,
+      "time_unit": "ns",
+      "items_per_second": 6.1434951444580763e-03
+    }
+  ]
+}
