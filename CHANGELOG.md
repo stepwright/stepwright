@@ -8,7 +8,7 @@ versions. Move the Unreleased section to a dated version heading when releasing.
 ## [Unreleased]
 
 ### Added
-- Initial v0.1.0 library: header-only C++20 explicit task and source machines,
+- First public release: header-only C++20 explicit task and source machines,
   constant-stack transitions, completion targets and contextual errors-as-values.
 - Cooperative cancellation tokens/callbacks, events, shared tasks, asynchronous
   mutexes, structured fan-out joins, deadlines, timers and task adapters.
@@ -16,17 +16,13 @@ versions. Move the Unreleased section to a dated version heading when releasing.
   source factories and consuming tasks.
 - Work-stealing thread pool, deterministic virtual executor, manual time and
   opt-in live task diagnostics.
+- Documented lifetime rules: observing a completion makes it safe to destroy the
+  object, including a pool or timer service whose post or schedule call has not
+  yet returned.
 - Runnable examples, compiled guide snippets, design arguments, allocation/race/
-  stack tests, sanitizer/static-analysis CI and reproducible benchmark reports.
-- CMake install/export and pkg-config metadata, relocation/FetchContent/subdirectory
-  consumer tests; GCC 13, Clang 18 and AppleClang 16 support floors.
+  stack/teardown tests, sanitizer/static-analysis CI and reproducible benchmark
+  reports.
+- CMake install/export and pkg-config metadata without developer-only
+  dependencies, relocation/FetchContent/subdirectory consumer tests; GCC 13,
+  Clang 18 and AppleClang 16 support floors.
 - Contributor, conduct and private vulnerability-reporting policies.
-
-### Fixed
-- Queued pool work can progress on an idle worker even when its posting item
-  blocks waiting for it. A bounded-duty guard protects single-item liveness
-  without polling a completely idle pool.
-
-### Changed
-- Documented the measured memory/contention trade-off of striped cancellation
-  state, and made developer-only dependencies independent of installed consumers.
