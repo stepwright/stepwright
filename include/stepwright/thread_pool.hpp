@@ -43,6 +43,10 @@ inline constexpr std::size_t pool_line = cache_line;
 ///   precondition violation (Debug asserts; in Release the item runs only if a
 ///   worker is still draining, otherwise never). Never shut down or destroy the
 ///   pool from one of its own threads.
+/// - After observing an item's effects, the owner may destroy the pool even if
+///   its post() has not returned: shutdown waits for any outside wake-up suffix.
+///   This does not permit new outside posts during shutdown. Queries
+///   (including size()) are not destruction signals.
 /// - Machines bound to the pool (bind(pool)) continue on it when completions
 ///   arrive from other threads, and continue inline when delivered by a worker.
 class thread_pool final : public executor {
@@ -119,8 +123,11 @@ public:
             STEPWRIGHT_ASSERT(!stopping_.load(std::memory_order_relaxed),
                               "post to a thread_pool after shutdown started");
             item.next = nullptr;
-            inject(item, item, 1, true);
-            wake_if_needed();
+            if (inject_outside(item)) {
+                wake_one();
+                // Last pool access: no notification may follow this release.
+                outside_waking_.fetch_sub(1, std::memory_order_release);
+            }
         }
     }
     /// True only on this pool's worker threads.
@@ -166,6 +173,11 @@ public:
             if (workers_[i].thread.joinable()) {
                 workers_[i].thread.join();
             }
+        }
+        // A published item can finish before its outside poster finishes waking a
+        // worker. All pins preceded publication; no new outside posts are allowed.
+        while (outside_waking_.load(std::memory_order_acquire) != 0) {
+            std::this_thread::yield();
         }
         joined_ = true;
     }
@@ -241,7 +253,7 @@ private:
             last = next;
         }
         last->next = nullptr;
-        inject(*first, *last, half, false);
+        inject(*first, *last, half);
         wake_if_needed();
     }
     // Owner only.
@@ -263,9 +275,9 @@ private:
 
     // --- injection queue ---------------------------------------------------------------
 
-    // Append the chain first..last (n items, last->next == nullptr). count: outside
-    // posts are counted here; overflowed items were counted by their worker.
-    void inject(work_item& first, work_item& last, std::uint64_t n, bool count) noexcept {
+    // Append overflowed items (already counted by their worker). Keep this worker
+    // path independent of outside lifetime bookkeeping.
+    void inject(work_item& first, work_item& last, std::uint64_t n) noexcept {
         inject_lock_.lock();
         if (inject_tail_ != nullptr) {
             inject_tail_->next = &first;
@@ -275,11 +287,33 @@ private:
         inject_tail_ = &last;
         inject_size_.store(inject_size_.load(std::memory_order_relaxed) + n,
                            std::memory_order_relaxed);
-        if (count) {
-            injected_.store(injected_.load(std::memory_order_relaxed) + n,
-                            std::memory_order_release);
-        }
         inject_lock_.unlock();
+    }
+    // Outside single-item publication: return a pinned wake obligation, otherwise
+    // the final unlock is the outside post's last pool access.
+    bool inject_outside(work_item& item) noexcept {
+        inject_lock_.lock();
+        // A sleeper's mandatory final scan sets this flag under the same lock.
+        // Consuming it transfers that scan/wake obligation to this outside post;
+        // subsequent posts coalesce behind it until another forced scan misses.
+        const bool wake = inject_needs_wake_;
+        if (wake) {
+            inject_needs_wake_ = false;
+            outside_waking_.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (inject_tail_ != nullptr) {
+            inject_tail_->next = &item;
+        } else {
+            inject_head_ = &item;
+        }
+        inject_tail_ = &item;
+        inject_size_.store(inject_size_.load(std::memory_order_relaxed) + 1,
+                           std::memory_order_relaxed);
+        // Injection's release unlock publishes count and item together. An
+        // acquired completion also orders this count before wait_idle's snapshot.
+        injected_.store(injected_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+        inject_lock_.unlock();
+        return wake;
     }
     // Take the oldest injected item plus a batch for the own ring. force: lock even
     // if the size hint says empty (the complete scans).
@@ -293,6 +327,15 @@ private:
         inject_lock_.lock();
         work_item* first = inject_head_;
         if (first == nullptr) {
+            if (force) {
+                const auto searching = idle_.load(std::memory_order_acquire) & searching_mask;
+                // Respect the same quarter-of-workers search budget as
+                // start_searching(). A remaining searcher must rescan before
+                // sleeping, so a full search budget already covers publication.
+                if (4 * searching < count_) {
+                    inject_needs_wake_ = true;
+                }
+            }
             inject_lock_.unlock();
             return nullptr;
         }
@@ -425,8 +468,8 @@ private:
 
     // --- idle protocol ----------------------------------------------------------
 
-    // After publication. Timed guards count as sleeping, so ordinary posts can
-    // wake them immediately; a single local item is covered by their rescan.
+    // After worker publication. Timed guards count as sleeping, so ordinary posts
+    // can wake them immediately; a single local item is covered by their rescan.
     void wake_if_needed() noexcept {
         const auto state = idle_.load(std::memory_order_acquire);
         if ((state >> 32U) != 0 && (state & searching_mask) == 0) {
@@ -619,6 +662,11 @@ private:
         self.park.store(0, std::memory_order_relaxed);
         idle_.fetch_sub(sleeping_one, std::memory_order_acq_rel);
     }
+#if defined(__APPLE__)
+    // Keep the persistent hot loop independent of the thread-start closure's
+    // register allocation and layout when the foreign post path grows.
+    [[gnu::noinline, gnu::aligned(detail::pool_line)]]
+#endif
     void run_worker(worker& self) noexcept {
         current_worker = &self;
         for (;;) {
@@ -660,6 +708,7 @@ private:
     work_item* inject_tail_ = nullptr;
     std::atomic<std::uint64_t> inject_size_{0};
     std::atomic<std::uint64_t> injected_{0};
+    bool inject_needs_wake_ = true; // guarded by inject_lock_; forced empty scans set it
     alignas(detail::pool_line) std::atomic<std::uint64_t> idle_{0}; // sleeping << 32 | searching
     alignas(detail::pool_line) std::mutex sleep_mutex_;
     std::condition_variable idle_cv_;
@@ -668,5 +717,8 @@ private:
     std::atomic<bool> stopping_{false};
     std::mutex shutdown_mutex_;
     bool joined_ = false; // guarded by shutdown_mutex_
+    // Only outside posts that need a wake pin the pool across publication. Keep
+    // these uncommon RMWs apart from injection and worker-polled state.
+    alignas(detail::pool_line) std::atomic<std::uint64_t> outside_waking_{0};
 };
 } // namespace stepwright
