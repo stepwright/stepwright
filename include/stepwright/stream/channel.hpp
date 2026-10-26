@@ -211,7 +211,9 @@ public:
                 consumer_.prepare(done, token);
                 waiting_ = true;
                 lock.unlock();
-                consumer_.arm(token, &on_cancel_wait, this);
+                if (token.can_be_cancelled()) {
+                    consumer_.arm(token, &on_cancel_wait, this);
+                }
                 return;
             }
         }
@@ -286,7 +288,9 @@ private:
                     prepare(done, token);
                     ch.senders_.push_back(*this);
                     lock.unlock();
-                    arm(token, &on_cancel);
+                    if (token.can_be_cancelled()) {
+                        arm(token, &on_cancel);
+                    }
                     return;
                 }
                 std::tie(retired, retired_capacity) = ch.grow_locked();

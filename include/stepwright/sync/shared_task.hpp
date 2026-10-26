@@ -123,7 +123,9 @@ private:
             owner.inner_->start(completion::bind<&shared_task::on_inner_done>(&owner),
                                 owner.source_->token());
         }
-        arm(token, &on_cancel);
+        if (token.can_be_cancelled()) {
+            arm(token, &on_cancel);
+        }
     }
     static void on_cancel(void* context) noexcept {
         auto& self = *static_cast<waiter*>(context);

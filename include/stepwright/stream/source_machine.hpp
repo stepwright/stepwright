@@ -170,7 +170,9 @@ public:
                 break;
             }
         }
-        consumer_.arm(token, &cancel_wait, this);
+        if (token.can_be_cancelled()) {
+            consumer_.arm(token, &cancel_wait, this);
+        }
     }
 
 protected:

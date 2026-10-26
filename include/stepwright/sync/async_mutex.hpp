@@ -77,7 +77,9 @@ private:
                 prepare(done, token);
                 m.waiters_.push_back(*this);
                 lock.unlock();
-                arm(token, &on_cancel);
+                if (token.can_be_cancelled()) {
+                    arm(token, &on_cancel);
+                }
                 return;
             }
             m.locked_ = true;
@@ -322,7 +324,9 @@ inline void detail::rw_waiter::start_wait(completion done, const cancel_token& t
             prepare(done, token);
             m.waiters_.push_back(*this);
             lock.unlock();
-            arm(token, &on_cancel);
+            if (token.can_be_cancelled()) {
+                arm(token, &on_cancel);
+            }
             return;
         }
         STEPWRIGHT_ASSERT(m.waiters_.empty(), "async_shared_mutex free with queued waiters");

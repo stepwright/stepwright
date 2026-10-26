@@ -27,7 +27,9 @@ private:
     void on_start(completion done, cancel_token token) override {
         prepare(done, token);
         timers_->schedule(*this, timers_->now() + duration_);
-        arm(token, &on_cancel);
+        if (token.can_be_cancelled()) {
+            arm(token, &on_cancel);
+        }
     }
     static void on_fire(timer_service::entry* e) noexcept {
         auto& self = static_cast<delay&>(*e);

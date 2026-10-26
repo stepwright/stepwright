@@ -58,7 +58,8 @@ private:
         units_.store(3, std::memory_order_relaxed);
         linked_ = token.can_be_cancelled();
         timers_->schedule(*this, timers_->now() + timeout_);
-        if (linked_) {
+        // The starter unit prevents completion until the final release below.
+        if (token.can_be_cancelled()) {
             link_.arm(token, &on_parent_cancel, this);
         }
         inner_->start(completion::bind<&with_deadline::on_inner>(this), source_->token());

@@ -23,7 +23,8 @@ namespace stepwright::detail {
 //   starter:   arm(token);  old = fetch_or(armed);    if (old & resolved) finish();
 //
 // Exactly one side sees the other's bit, so exactly one calls finish(). With an
-// empty token `armed` is set before publication and the resolver always finishes.
+// empty token `armed` is set before publication and the resolver always finishes;
+// the starter must skip arm (and every other member access) after publication.
 // Exactly one resolver exists per wait: the party that unpublished the waiter
 // under the owner's lock or CAS (grant or cancellation), or the winner of
 // `decided` (timers). finish() disarms cancellation (waiting for a callback
@@ -56,8 +57,9 @@ public:
     }
     /// Abandon a prepared wait that was never published (nobody can resolve it).
     void unprepare() noexcept { phase_.store(0, std::memory_order_relaxed); }
-    /// Arm cancellation after publication; the last access by the starter. With an
-    /// empty token this does not touch the object (it may already be complete).
+    /// Arm cancellation after publication; the last access by the starter. The
+    /// caller must check its own token and skip this call if it cannot cancel:
+    /// publication may already have completed and ended this object's lifetime.
     void arm(const cancel_token& token, void (*on_cancel)(void*) noexcept, void* ctx) noexcept {
         if (!token.can_be_cancelled()) {
             return;

@@ -77,7 +77,9 @@ private:
                 prepare(done, token);
                 ev.waiters_.push_back(*this);
                 lock.unlock();
-                arm(token, &on_cancel);
+                if (token.can_be_cancelled()) {
+                    arm(token, &on_cancel);
+                }
                 return;
             }
         }

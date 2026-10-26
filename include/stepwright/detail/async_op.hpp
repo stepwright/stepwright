@@ -25,8 +25,9 @@ protected:
     void prepare(completion done, const cancel_token& token) noexcept {
         core_.prepare(done, token);
     }
-    /// Arm cancellation after publication; the last access by the starter. With an
-    /// empty token this does not touch the object (it may already be complete).
+    /// Arm cancellation after publication; the last access by the starter. The
+    /// caller must check its own token and skip this call if it cannot cancel:
+    /// even calling a no-op member after completion may use a destroyed object.
     void arm(const cancel_token& token, void (*on_cancel)(void*) noexcept) noexcept {
         if (!token.can_be_cancelled()) {
             return;

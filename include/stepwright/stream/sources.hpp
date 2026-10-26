@@ -146,7 +146,9 @@ public:
         }
         wait_.prepare(done, token);
         timers_->schedule(*this, next_due);
-        wait_.arm(token, &on_cancel, this);
+        if (token.can_be_cancelled()) {
+            wait_.arm(token, &on_cancel, this);
+        }
     }
     /// The period.
     timer_service::clock::duration period() const noexcept { return period_; }

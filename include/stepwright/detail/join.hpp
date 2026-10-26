@@ -110,7 +110,8 @@ private:
         const std::size_t units = shards_ ? shard_count : n;
         count_.store(units + (mode_ == mode::any ? 2 : 1), std::memory_order_relaxed);
         linked_ = token.can_be_cancelled();
-        if (linked_) {
+        // The starter unit keeps inline cancellation/child completion from finishing us.
+        if (token.can_be_cancelled()) {
             link_.arm(token, &on_parent_cancel, this);
         }
         const cancel_token child_token =

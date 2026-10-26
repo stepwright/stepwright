@@ -243,7 +243,9 @@ private:
                 prepare(done, token);
                 b.publisher_ = this;
                 lock.unlock();
-                arm(token, &on_cancel);
+                if (token.can_be_cancelled()) {
+                    arm(token, &on_cancel);
+                }
                 return;
             }
             b.store_locked(std::move(value_));
@@ -354,7 +356,9 @@ public:
                 consumer_.prepare(done, token);
                 b.readers_.push_back(*this);
                 lock.unlock();
-                consumer_.arm(token, &on_cancel, this);
+                if (token.can_be_cancelled()) {
+                    consumer_.arm(token, &on_cancel, this);
+                }
                 return;
             }
         }
