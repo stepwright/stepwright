@@ -36,7 +36,8 @@ public:
 
     /// Return a waiter task bound to this shared task (guaranteed copy elision).
     waiter wait() noexcept;
-    /// Thread-safe; true once the inner task has completed (until reset()).
+    /// Thread-safe snapshot; true once inner completion publishes (until reset()).
+    /// Not a destruction signal: waiter detachment/delivery may still be running.
     bool is_done() const noexcept { return state_.load(std::memory_order_acquire) == state_done; }
     /// Allow another run. Precondition: is_done(), no waiters, not concurrent with
     /// any other member call.

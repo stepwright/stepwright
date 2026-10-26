@@ -80,7 +80,8 @@ public:
     bool can_be_cancelled() const noexcept { return state_ != nullptr; }
     /// Sequentially consistent query for a nonempty token, supporting the engine's
     /// park/cancel handshake. Safe concurrently with request_cancel(); empty tokens
-    /// still perform no atomic operations.
+    /// still perform no atomic operations. Not a callback-completion or destruction
+    /// signal: a request may still be dispatching callbacks.
     bool cancel_requested() const noexcept {
         return state_ && state_->requested.load(std::memory_order_seq_cst);
     }
@@ -275,7 +276,8 @@ public:
     cancel_source() { token_.state_ = new detail::cancel_state; }
     /// Obtain an owning token copy; safe concurrently with requests.
     cancel_token token() const noexcept { return token_; }
-    /// Concurrent SC query of the request flag; moved-from means false, no atomics.
+    /// Concurrent SC snapshot; moved-from means false, no atomics. Not a
+    /// destruction signal or proof that request callbacks have finished.
     bool cancel_requested() const noexcept { return token_.cancel_requested(); }
     /// Request once and invoke registered callbacks on this thread, without any
     /// lock held. Returns true only for the first request. A callback may destroy

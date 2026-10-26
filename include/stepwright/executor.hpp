@@ -63,6 +63,8 @@ public:
 /// Thread-safe intrusive FIFO. Producers may post concurrently; run_one/run_all
 /// may be called by consumers on any thread, and do not globally serialize work.
 /// Drain the queue before destruction; queued nodes/executor must remain alive.
+/// Keep the executor alive until driving calls return (run_all revisits the
+/// queue after callbacks). A callback may destroy its node, not an active driver.
 class manual_executor final : public executor {
     struct execution_scope {
         const manual_executor* owner;
@@ -125,6 +127,7 @@ public:
         return count;
     }
     /// Thread-safe instantaneous queued count (excludes executing callbacks).
+    /// Not a destruction signal: driving calls may still access the executor.
     std::size_t pending() const noexcept {
         std::lock_guard lock(mutex_);
         return count_;

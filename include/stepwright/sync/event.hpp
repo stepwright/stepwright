@@ -30,7 +30,8 @@ public:
     /// called from inside another trampoline-delivered completion. set() does not
     /// access the event after its waiters have been detached.
     void set(error result = {}) noexcept;
-    /// Thread-safe query; true once set() has been called (until reset()).
+    /// Thread-safe snapshot; true once set() publishes (until reset()). Not a
+    /// destruction signal: set() may still be detaching/delivering waiters.
     bool is_set() const noexcept { return set_.load(std::memory_order_acquire); }
     /// Return to the unset state. Precondition: no registered waiters, and not
     /// concurrent with set() or a waiter start.

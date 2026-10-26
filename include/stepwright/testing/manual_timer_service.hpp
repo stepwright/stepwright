@@ -11,6 +11,8 @@ namespace stepwright::testing {
 /// Deterministic timer service for tests: time only moves when advance() or
 /// advance_to() is called, and due callbacks run on the calling thread. All
 /// members are thread-safe. Debug asserts on destruction with scheduled entries.
+/// Keep the service alive through all advance/advance_to calls: callbacks may
+/// destroy their entries, not the driving service. Queries are not completion.
 class manual_timer_service final : public timer_service {
 public:
     /// Start at clock::time_point{} (or at start).
@@ -25,7 +27,7 @@ public:
                           "destroying a manual_timer_service with scheduled timers");
     }
 
-    /// The manual current time.
+    /// The manual current time; a snapshot, not a destruction signal.
     clock::time_point now() const noexcept override {
         const std::lock_guard lock(lock_);
         return now_;
@@ -87,7 +89,7 @@ public:
             now_ = t;
         }
     }
-    /// Number of scheduled (not yet fired) entries.
+    /// Number of scheduled (not yet fired) entries; not a destruction signal.
     std::size_t pending() const noexcept {
         const std::lock_guard lock(lock_);
         return queue_.size();

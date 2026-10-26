@@ -35,6 +35,8 @@ enum class schedule : std::uint8_t {
 /// - Nothing is allocated, ever (items and timer entries are intrusive).
 /// - Destroy only without scheduled or due timers (Debug asserts); queued items
 ///   are simply not run.
+/// - Keep this service alive until every run_* call returns. Callbacks may destroy
+///   their nodes, not the active driver. Queries are not destruction signals.
 class virtual_executor final : public executor, public timer_service {
 public:
     /// Also expose the allocating callable convenience overload.
@@ -81,7 +83,7 @@ public:
 
     // --- timer_service (virtual time) ---------------------------------------------
 
-    /// The virtual time.
+    /// The virtual time; a snapshot, not a destruction signal.
     clock::time_point now() const noexcept override {
         const std::lock_guard lock(lock_);
         return now_;
@@ -221,12 +223,12 @@ public:
             }
         }
     }
-    /// Number of ready items: posted items plus due timers.
+    /// Number of ready items: posted items plus due timers; not a destruction signal.
     std::size_t pending() const noexcept {
         const std::lock_guard lock(lock_);
         return ready_count_ + due_count_;
     }
-    /// Number of timers scheduled for the future (not yet due).
+    /// Number of future timers (not yet due); not a destruction signal.
     std::size_t scheduled_timers() const noexcept {
         const std::lock_guard lock(lock_);
         return timers_.size();

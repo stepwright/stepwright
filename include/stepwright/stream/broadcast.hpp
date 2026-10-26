@@ -108,17 +108,18 @@ public:
             publisher->resolve(error::make(errc::closed));
         }
     }
-    /// Thread-safe query.
+    /// Thread-safe snapshot, not a destruction signal (close may still notify).
     bool is_closed() const noexcept {
         const std::lock_guard lock(lock_);
         return closed_;
     }
-    /// Current number of subscriptions; thread-safe snapshot.
+    /// Current number of subscriptions; thread-safe snapshot, not a destruction
+    /// signal (an unsubscribe may still be delivering a pending publish).
     std::size_t subscribers() const noexcept {
         const std::lock_guard lock(lock_);
         return subscribers_;
     }
-    /// Ring capacity.
+    /// Ring capacity; not a destruction signal.
     std::size_t capacity() const noexcept { return capacity_; }
     /// Subscribe; the subscription starts at the next published item (guaranteed
     /// copy elision). Equivalent to constructing subscription(*this).

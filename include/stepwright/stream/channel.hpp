@@ -163,17 +163,18 @@ public:
     /// available; waiting senders complete with errc::closed; a waiting consumer is
     /// woken. Completions run on this thread through the hand-off trampoline.
     void close(error reason = {}) noexcept;
-    /// Thread-safe query.
+    /// Thread-safe snapshot, not a destruction signal (close may still notify).
     bool is_closed() const noexcept {
         const std::lock_guard lock(lock_);
         return closed_;
     }
-    /// Number of buffered items (excluding waiting senders); thread-safe snapshot.
+    /// Number of buffered items (excluding waiting senders); thread-safe snapshot,
+    /// not a destruction signal (send/receive may still deliver completions).
     std::size_t size() const noexcept {
         const std::lock_guard lock(lock_);
         return ring_.size();
     }
-    /// The bound, or 0 for an unbounded channel.
+    /// The bound, or 0 for an unbounded channel; not a destruction signal.
     std::size_t capacity() const noexcept { return bounded_ ? ring_.capacity() : 0; }
 
     /// Consumer: take the oldest item (admitting the oldest waiting sender into the

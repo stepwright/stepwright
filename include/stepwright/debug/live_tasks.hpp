@@ -61,6 +61,7 @@ struct live_task {
 /// Copy the live entries under the registry lock, then call f(const live_task&)
 /// for each one outside the lock (f may start or complete machines). Thread-safe.
 /// Allocates the snapshot. Entries change concurrently: a snapshot is a moment.
+/// Neither presence nor absence is a completion/destruction signal for a task.
 template <class F>
 void for_each_live(F&& f) {
     std::vector<live_task> snapshot;
@@ -76,7 +77,7 @@ void for_each_live(F&& f) {
     }
 }
 
-/// Number of live entries (a snapshot). Thread-safe.
+/// Number of live entries (a snapshot). Thread-safe; not a destruction signal.
 inline std::size_t live_count() {
     std::size_t count = 0;
     detail::live_registry::instance().visit([&](const detail::live_node&) { ++count; });
