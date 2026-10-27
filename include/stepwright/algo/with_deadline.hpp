@@ -37,6 +37,13 @@ public:
         STEPWRIGHT_ASSERT(units_.load(std::memory_order_acquire) == 0,
                           "destroying a running with_deadline");
     }
+    /// Set the next run's timeout while idle (not concurrent with start).
+    with_deadline& with(timer_service::clock::duration timeout) noexcept {
+        STEPWRIGHT_ASSERT(units_.load(std::memory_order_acquire) == 0,
+                          "with_deadline::with while active");
+        timeout_ = timeout;
+        return *this;
+    }
 
 private:
     static constexpr std::uint8_t undecided = 0;

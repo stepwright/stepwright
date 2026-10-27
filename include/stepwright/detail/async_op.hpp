@@ -20,6 +20,8 @@ public:
 
 protected:
     async_op() noexcept = default;
+    /// Owner-thread reconfiguration check; never a concurrent destruction signal.
+    bool idle() const noexcept { return core_.idle(); }
 
     /// Record the receiver before the operation is published.
     void prepare(completion done, const cancel_token& token) noexcept {

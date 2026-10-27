@@ -95,9 +95,8 @@ TEST(sync_wait, synchronous_pool_timer_failure_and_cancellation) {
     EXPECT_FALSE(stepwright::sync_wait(pause));
     stepwright::cancel_source stop;
     stop.request_cancel();
-    stepwright::delay long_pause(timers, 1h);
     EXPECT_TRUE(
-        stepwright::sync_wait(long_pause, stop.token()).is(stepwright::errc::cancelled));
+        stepwright::sync_wait(pause.with(1h), stop.token()).is(stepwright::errc::cancelled));
     pool.wait_idle();
 }
 

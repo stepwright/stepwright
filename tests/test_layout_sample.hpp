@@ -33,6 +33,10 @@ using sample_fn = void (*)(const stepwright::completion&, const stepwright::canc
     X(stepwright::when_any<2>)                                                                     \
     X(stepwright::when_any<8>)                                                                     \
     X(stepwright::when_any_range)                                                                  \
+    X(stepwright::sequence<2>)                                                                     \
+    X(stepwright::sequence_range)                                                                  \
+    X(stepwright::retry_policy)                                                                    \
+    X(stepwright::retry)                                                                           \
     X(stepwright::timer_service::entry)                                                            \
     X(stepwright::steady_timer_service)                                                            \
     X(stepwright::testing::manual_timer_service)                                                   \

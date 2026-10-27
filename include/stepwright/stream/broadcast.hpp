@@ -219,12 +219,23 @@ class broadcast<T>::publish_op final : public detail::async_op {
 public:
     /// Bind to owner with the value to publish.
     publish_op(broadcast& owner, T value) noexcept : owner_(&owner), value_(std::move(value)) {}
+    /// Bind an idle, reusable operation with a default value.
+    explicit publish_op(broadcast& owner) noexcept(std::is_nothrow_default_constructible_v<T>)
+        requires std::is_default_constructible_v<T>
+        : publish_op(owner, T{}) {}
     publish_op(const publish_op&) = delete;
     publish_op& operator=(const publish_op&) = delete;
     /// Destroy only while idle (Debug asserts).
     ~publish_op() override = default;
     /// The value to publish (moved-from once published).
     T& value() noexcept { return value_; }
+    /// Replace the value for the next run; only while idle, serialized with start.
+    publish_op& with(T value) noexcept {
+        STEPWRIGHT_ASSERT(idle(), "publish_op::with while active");
+        std::destroy_at(&value_);
+        std::construct_at(&value_, std::move(value));
+        return *this;
+    }
 
 private:
     friend class broadcast;
