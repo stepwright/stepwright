@@ -6,12 +6,13 @@
 //
 //   begin()      validate the input, then<&greet::look_up>()
 //   look_up()    after<&greet::on_user>(lookup_): start a child, continue later
-//   on_user(e)   the child's result: fail(e) passes the error on, done() succeeds
+//   on_user()    build the greeting; a child failure skips this step automatically
 //
 // Nothing here is asynchronous: the child completes inside its start(), and the
 // driver loop simply carries on (no recursion, no allocation). Errors are values:
 // each machine an error passes through adds its name to the error's context.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <array>
 #include <cstdio>
 #include <string>
@@ -36,7 +37,7 @@ struct lookup_user : stepwright::machine<lookup_user> {
                 return done();
             }
         }
-        return fail(stepwright::error::make(std::errc::invalid_argument, "no such user"));
+        return fail(std::errc::invalid_argument, "no such user");
     }
 };
 
@@ -46,7 +47,7 @@ struct greet : stepwright::machine<greet> {
 
     step begin() {
         if (name.empty()) {
-            return fail(stepwright::error::make(std::errc::invalid_argument, "empty name"));
+            return fail(std::errc::invalid_argument, "empty name");
         }
         return then<&greet::look_up>(); // the next step, in the same driver loop
     }
@@ -54,10 +55,7 @@ struct greet : stepwright::machine<greet> {
         lookup_.name = name;
         return after<&greet::on_user>(lookup_); // start the child, resume with its result
     }
-    step on_user(const stepwright::error& e) {
-        if (e) {
-            return fail(e); // the error keeps lookup_user's context and gains ours
-        }
+    step on_user() { // failures keep lookup_user's context and gain ours, without calling this
         greeting = "hello, " + std::string(name) + " (id " + std::to_string(lookup_.found_id) + ")";
         return done();
     }
@@ -80,7 +78,7 @@ int main() {
     int failures = 0;
     for (const std::string_view name : {"alice", "mallory", ""}) {
         op.name = name;
-        const stepwright::error e = example::run_blocking(op);
+        const stepwright::error e = stepwright::sync_wait(op);
         if (e) {
             example::print_failure(name, e);
             ++failures;

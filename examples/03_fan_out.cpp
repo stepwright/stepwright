@@ -9,12 +9,12 @@
 // shards spread over the workers; then it waits for its "download" (a timer).
 // A waiting shard is cancelled by the failure of another one: its delay
 // completes with errc::cancelled, and so does the shard.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <deque>
-#include <vector>
 
 using namespace std::chrono_literals;
 
@@ -37,7 +37,7 @@ struct fetch_shard : stepwright::machine<fetch_shard> {
     }
     step start_download() {
         if (index == corrupt_index) {
-            return fail(stepwright::error::make(std::errc::illegal_byte_sequence, "corrupt block"));
+            return fail(std::errc::illegal_byte_sequence, "corrupt block");
         }
         if (corrupt_index < 0) {
             bytes = 1000 + index; // the happy path: no waiting
@@ -45,7 +45,7 @@ struct fetch_shard : stepwright::machine<fetch_shard> {
         }
         return after<&fetch_shard::on_downloaded>(download_);
     }
-    step on_downloaded(const stepwright::error& e) {
+    step on_downloaded(const stepwright::error& e) { // inspect cancellation to count it
         if (e.is(stepwright::errc::cancelled)) {
             cancelled->fetch_add(1, std::memory_order_relaxed);
         }
@@ -63,17 +63,15 @@ int main() {
     std::atomic<int> cancelled{0};
 
     std::deque<example::fetch_shard> shards; // machines have identity: deque never moves them
-    std::vector<stepwright::task*> children;
     for (int i = 0; i < example::shard_count; ++i) {
         shards.emplace_back(pool, timers);
         shards.back().index = i;
         shards.back().cancelled = &cancelled;
-        children.push_back(&shards.back());
     }
-    stepwright::when_all_range all(children); // cancel_on_error by default
+    stepwright::when_all_range all(shards); // copies addresses once; cancel_on_error by default
 
     // Run 1: every shard succeeds.
-    stepwright::error e = example::run_blocking(all);
+    stepwright::error e = stepwright::sync_wait(all);
     int total = 0;
     for (const auto& shard : shards) {
         total += shard.bytes;
@@ -86,7 +84,7 @@ int main() {
     for (auto& shard : shards) {
         shard.corrupt_index = 3;
     }
-    e = example::run_blocking(all);
+    e = stepwright::sync_wait(all);
     std::printf("run 2: failed with '%.*s' from %s\n", static_cast<int>(e.message().size()),
                 e.message().data(), e.context().empty() ? "?" : e.context()[0]);
     std::printf("run 2: %d siblings cancelled\n", cancelled.load());

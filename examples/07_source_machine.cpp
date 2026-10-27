@@ -11,7 +11,8 @@
 // Fetching a page is a child task (a machine that hops to the pool, standing in
 // for a network request); the stream emits that page's users one by one, then
 // fetches the next page, and ends after the last one.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <array>
 #include <cstdio>
 #include <string>
@@ -52,10 +53,7 @@ struct user_stream : stepwright::source_machine<user_stream, std::string> {
     int pages_fetched() const noexcept { return fetch_.requests; }
 
     step begin() { return after<&user_stream::on_page>(fetch_); }
-    step on_page(const stepwright::error& e) {
-        if (e) {
-            return fail(e); // the consumer's pull returns this failure
-        }
+    step on_page() { // a child failure skips this step and fails the stream
         next_ = 0;
         return then<&user_stream::next_user>();
     }
@@ -84,7 +82,7 @@ int main() {
     auto consumer =
         stepwright::for_each(users, [&](std::string name) { seen.push_back(std::move(name)); });
     consumer.bind(pool);
-    const stepwright::error e = example::run_blocking(consumer);
+    const stepwright::error e = stepwright::sync_wait(consumer);
     pool.wait_idle();
 
     for (std::size_t i = 0; i < seen.size(); ++i) {

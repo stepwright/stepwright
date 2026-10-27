@@ -11,29 +11,31 @@
 //                          ones, and dropped() says how many.
 //
 // Everything runs on this thread, so the interleaving (and the output) is exact.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <cstdio>
-#include <optional>
 #include <vector>
 
 namespace example {
 // Publishes 0, 1, ..., count - 1, waiting whenever the policy says so.
 struct publisher : stepwright::machine<publisher> {
-    publisher(stepwright::broadcast<int>& out, int count) : out_(&out), count_(count) {}
+    publisher(stepwright::broadcast<int>& out, int count)
+        : out_(&out)
+        , count_(count)
+        , publish_(out) {}
     step begin() {
         if (next_ == count_) {
             out_->close(); // subscribers drain what they have not read, then end
             return done();
         }
-        publish_.emplace(*out_, next_++);
-        return after<&publisher::begin>(*publish_);
+        return after<&publisher::begin>(publish_.with(next_++));
     }
 
 private:
     stepwright::broadcast<int>* out_;
     int count_;
     int next_ = 0;
-    std::optional<stepwright::broadcast<int>::publish_op> publish_;
+    stepwright::broadcast<int>::publish_op publish_;
 };
 
 // Read whatever a subscription has right now (it does not wait).
@@ -64,20 +66,26 @@ int main() {
     auto slow = lossless.subscribe();
     std::vector<int> fast_items;
     auto reader = stepwright::for_each(fast, [&](int v) { fast_items.push_back(v); });
-    example::waiter reader_done;
-    reader.start(reader_done.callback());
+    bool read_ok = false;
+    auto on_read = [&](const stepwright::error& e) { read_ok = !e; };
+    reader.start(stepwright::completion::to(on_read));
     example::publisher send_all(lossless, items);
-    example::waiter published;
-    send_all.start(published.callback());
+    bool published = false;
+    bool publish_ok = false;
+    auto on_published = [&](const stepwright::error& e) {
+        publish_ok = !e;
+        published = true;
+    };
+    send_all.start(stepwright::completion::to(on_published));
     // The ring is full of items `slow` has not read: the publisher is waiting.
-    std::printf("  publisher waiting for the slow reader: %s\n", published.ready() ? "no" : "yes");
+    std::printf("  publisher waiting for the slow reader: %s\n", published ? "no" : "yes");
     std::vector<int> slow_items;
     while (slow_items.size() < static_cast<std::size_t>(items)) {
         for (const int v : example::drain(slow)) { // each read frees a slot
             slow_items.push_back(v);
         }
     }
-    const bool lossless_ok = !published.wait() && !reader_done.wait();
+    const bool lossless_ok = published && publish_ok && read_ok;
     example::print("fast", fast_items);
     example::print("slow", slow_items);
 
@@ -89,10 +97,9 @@ int main() {
     auto lagging = lossy.subscribe();
     std::vector<int> fresh_items;
     auto live = stepwright::for_each(fresh, [&](int v) { fresh_items.push_back(v); });
-    example::waiter live_done;
-    live.start(live_done.callback());
     example::publisher send_lossy(lossy, items);
-    const bool lossy_ok = !example::run_blocking(send_lossy) && !live_done.wait();
+    stepwright::when_all both(live, send_lossy);
+    const bool lossy_ok = !stepwright::sync_wait(both);
     const std::vector<int> late = example::drain(lagging);
     example::print("fresh", fresh_items);
     example::print("lagging", late);

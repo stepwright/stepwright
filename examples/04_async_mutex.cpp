@@ -10,11 +10,11 @@
 // balance, then hops to the pool (standing in for an asynchronous write to
 // storage) before writing it back. That read-wait-write sequence loses updates
 // unless it is exclusive; with the async mutex every deposit counts.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <atomic>
 #include <cstdio>
 #include <deque>
-#include <vector>
 
 namespace example {
 struct ledger {
@@ -74,13 +74,11 @@ int main() {
     example::ledger book;
 
     std::deque<example::teller> staff;
-    std::vector<stepwright::task*> children;
-    children.reserve(tellers);
     for (int i = 0; i < tellers; ++i) {
-        children.push_back(&staff.emplace_back(pool, book, deposits_each));
+        staff.emplace_back(pool, book, deposits_each);
     }
-    stepwright::when_all_range everyone(children);
-    const stepwright::error e = example::run_blocking(everyone);
+    stepwright::when_all_range everyone(staff);
+    const stepwright::error e = stepwright::sync_wait(everyone);
     pool.wait_idle();
 
     std::printf("tellers: %d on %zu threads, %d deposits each\n", tellers, pool.size(),
