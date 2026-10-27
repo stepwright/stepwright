@@ -135,6 +135,8 @@ public:
         const worker* self = current_worker;
         return self != nullptr && self->pool == this;
     }
+    /// True on any stepwright pool worker; useful for detecting blocking misuse.
+    static bool running_on_worker_thread() noexcept { return current_worker != nullptr; }
     /// Number of worker threads.
     std::size_t size() const noexcept { return count_; }
     /// Block until every item posted before the call (and everything those items

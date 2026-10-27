@@ -6,6 +6,7 @@
 
 #include <stepwright/algo/adapters.hpp>
 #include <stepwright/algo/delay.hpp>
+#include <stepwright/algo/sync_wait.hpp>
 #include <stepwright/algo/when_all.hpp>
 #include <stepwright/algo/when_any.hpp>
 #include <stepwright/algo/with_deadline.hpp>
