@@ -2,8 +2,10 @@
 
 #include <stepwright/detail/spin_lock.hpp>
 #include <stepwright/executor.hpp>
+#include <stepwright/task.hpp>
 #include <stepwright/timer.hpp>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -52,6 +54,8 @@ public:
     virtual_executor& operator=(const virtual_executor&) = delete;
     /// Debug asserts that no timer is scheduled or due.
     ~virtual_executor() override {
+        STEPWRIGHT_ASSERT(run_task_ == nullptr || run_done_.load(std::memory_order_acquire),
+                          "destroying a virtual_executor with an unsettled run");
         STEPWRIGHT_ASSERT(timers_.empty() && due_head_ == nullptr,
                           "destroying a virtual_executor with scheduled timers");
     }
@@ -126,6 +130,43 @@ public:
     }
 
     // --- driving ------------------------------------------------------------------
+
+    /// Start t and drive only until its completion (including virtual time).
+    /// Only one run may be outstanding; do not call run recursively/concurrently.
+    /// If stalled, return resource_deadlock_would_occur without asserting: t is
+    /// STILL ACTIVE. Cancel/resolve it, then call run(t) again to settle that same
+    /// start, not restart it. Keep t and this executor alive in the meantime.
+    error run(task& t, cancel_token token = {}) {
+        STEPWRIGHT_ASSERT(!driving_run_, "nested virtual_executor::run");
+        STEPWRIGHT_ASSERT(run_task_ == nullptr || run_task_ == &t,
+                          "virtual_executor::run has an unsettled task");
+        driving_run_ = true;
+        if (run_task_ == nullptr) {
+            run_result_ = {};
+            run_done_.store(false, std::memory_order_relaxed);
+            run_task_ = &t;
+            t.start(completion::bind<&virtual_executor::on_run_done>(this), std::move(token));
+        }
+        while (!run_done_.load(std::memory_order_acquire)) {
+            if (run_one()) {
+                continue;
+            }
+            if (run_done_.load(std::memory_order_acquire)) {
+                break;
+            }
+            if (!advance(clock::time_point::max())) {
+                // Recheck for a foreign completion before diagnosing a stall.
+                if (!run_done_.load(std::memory_order_acquire)) {
+                    driving_run_ = false;
+                    return error::make(std::errc::resource_deadlock_would_occur,
+                                       "task cannot complete: nothing left to run");
+                }
+            }
+        }
+        run_task_ = nullptr;
+        driving_run_ = false;
+        return run_result_;
+    }
 
     /// Run one ready item or due timer chosen by the policy; false if none is ready.
     /// Time does not move.
@@ -237,6 +278,11 @@ public:
     std::uint64_t seed() const noexcept { return seed_; }
 
 private:
+    void on_run_done(const error& result) noexcept {
+        run_result_ = result;
+        // Last executor access by the callback; a later run may reuse its state.
+        run_done_.store(true, std::memory_order_release);
+    }
     struct scope {
         const virtual_executor* owner;
         scope* previous;
@@ -346,5 +392,9 @@ private:
     testing::schedule policy_;
     std::uint64_t seed_;
     std::uint64_t random_;
+    task* run_task_ = nullptr;
+    error run_result_;
+    std::atomic<bool> run_done_{false};
+    bool driving_run_ = false;
 };
 } // namespace stepwright::testing

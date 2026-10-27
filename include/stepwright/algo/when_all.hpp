@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stepwright/detail/join.hpp>
+#include <stepwright/detail/task_range.hpp>
 
 #include <array>
 #include <concepts>
@@ -51,11 +52,28 @@ public:
     explicit when_all_range(std::span<task* const> children,
                             when_all_policy policy = when_all_policy::cancel_on_error)
         : join_base(all_mode(policy))
+        , children_(children)
         , shard_storage_(children.size() >= shard_threshold ? shard_count : 0) {
         attach(children, nullptr, shard_storage_.empty() ? nullptr : shard_storage_.data());
     }
+    template <detail::task_object_range R>
+    /// Copy addresses from a mutable sized/multipass lvalue range (one extra allocation).
+    /// Elements must keep stable addresses for this join's lifetime. Runs allocate
+    /// nothing; policy and cancellation semantics are unchanged.
+    explicit when_all_range(R& children, when_all_policy policy = when_all_policy::cancel_on_error)
+        : join_base(all_mode(policy))
+        , children_(children)
+        , shard_storage_(children_.view().size() >= shard_threshold ? shard_count : 0) {
+        attach(children_.view(), nullptr, shard_storage_.empty() ? nullptr : shard_storage_.data());
+    }
+    template <detail::task_object_range R>
+        requires(!std::is_lvalue_reference_v<R>)
+    /// Rejected: temporary task storage would dangle.
+    explicit when_all_range(R&& children,
+                            when_all_policy policy = when_all_policy::cancel_on_error) = delete;
 
 private:
+    detail::task_range children_;
     // Allocated once, at construction (sized 0 or shard_count).
     std::vector<shard> shard_storage_;
 };

@@ -11,7 +11,8 @@
 // The machines are bound to a thread_pool: timer completions arrive on the
 // timer thread, and binding moves the next step back onto the pool, so the timer
 // thread only ever does a few nanoseconds of work per timer.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <chrono>
 #include <cstdio>
 
@@ -58,13 +59,13 @@ int main() {
     // A plain delay: just wait (the margins below are wide on purpose, so the
     // outcome never depends on how busy the machine is).
     stepwright::delay pause(timers, 5ms);
-    const stepwright::error paused = example::run_blocking(pause);
+    const stepwright::error paused = stepwright::sync_wait(pause);
     std::printf("delay of 5 ms: %s\n", paused ? "failed" : "done");
 
     // A fast backend (1 ms) under a generous limit (5 s): the reply wins.
     example::query fast(timers, pool, 1ms);
     stepwright::with_deadline fast_limited(fast, timers, 5s);
-    const stepwright::error fast_result = example::run_blocking(fast_limited);
+    const stepwright::error fast_result = stepwright::sync_wait(fast_limited);
     example::report("fast query, 5 s limit", fast_result, fast);
 
     // A slow backend (one minute) under a 20 ms limit: the timer wins, the query
@@ -73,7 +74,7 @@ int main() {
     example::query slow(timers, pool, 60s);
     stepwright::with_deadline slow_limited(slow, timers, 20ms);
     const auto started = std::chrono::steady_clock::now();
-    const stepwright::error slow_result = example::run_blocking(slow_limited);
+    const stepwright::error slow_result = stepwright::sync_wait(slow_limited);
     const bool prompt = std::chrono::steady_clock::now() - started < 30s;
     example::report("slow query, 20 ms limit", slow_result, slow);
     std::printf("slow query returned promptly: %s\n", prompt ? "yes" : "no");

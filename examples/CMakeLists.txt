@@ -33,3 +33,17 @@ endforeach()
 # layout, so it is enabled for that one program as a whole (its only translation
 # unit), never mixed with untracked code.
 target_compile_definitions(10_debugging_hangs PRIVATE STEPWRIGHT_TRACK_TASKS=1)
+
+foreach(name factorial fibonacci merge_sort parallel_sum deep_recursion retry_download timeout_computation)
+    add_executable(learn_${name} learn/${name}.cpp)
+    target_link_libraries(learn_${name} PRIVATE stepwright::stepwright)
+    stepwright_apply_warnings(learn_${name})
+    add_dependencies(all_examples learn_${name})
+    if(STEPWRIGHT_BUILD_TESTS)
+        add_test(NAME example_learn_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DEXAMPLE=$<TARGET_FILE:learn_${name}>
+                -DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/learn/${name}.cpp
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/check_example.cmake)
+    endif()
+endforeach()

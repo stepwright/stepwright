@@ -10,37 +10,34 @@
 // Part 1 shows the backpressure on one thread, step by step. Part 2 runs the
 // real pipeline on a thread pool: four producer machines, two channels of eight
 // slots, one merge, one consumer.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <deque>
-#include <optional>
-#include <vector>
 
 namespace example {
 // Sends first, first + 1, ..., first + count - 1, waiting for room when full.
 struct producer : stepwright::machine<producer> {
     producer(stepwright::thread_pool& pool, stepwright::channel<std::uint64_t>& out,
              std::uint64_t first, std::uint64_t count)
-        : out_(&out)
-        , next_(first)
-        , end_(first + count) {
+        : next_(first)
+        , end_(first + count)
+        , send_(out) {
         bind(pool);
     }
     step begin() {
         if (next_ == end_) {
             return done();
         }
-        send_.emplace(*out_, next_++); // the send operation lives in this machine
-        return after<&producer::begin>(*send_);
+        return after<&producer::begin>(send_.with(next_++));
     }
 
 private:
-    stepwright::channel<std::uint64_t>* out_;
     std::uint64_t next_;
     std::uint64_t end_;
-    std::optional<stepwright::channel<std::uint64_t>::send_op> send_;
+    stepwright::channel<std::uint64_t>::send_op send_; // stable, reusable child
 };
 } // namespace example
 
@@ -53,10 +50,11 @@ int main() {
     std::printf("try_send 1, 2, 3 into 2 slots: %s %s %s\n", first ? "ok" : "full",
                 second ? "ok" : "full", third ? "ok" : "full");
     auto send_three = small.send(3);
-    example::waiter sent;
-    send_three.start(sent.callback());                    // waits: the channel is full
-    std::printf("pulled %d\n", small.try_pull().value()); // makes room: the send completes
-    std::printf("waiting send completed: %s\n", sent.wait() ? "failed" : "yes");
+    bool sent = false; // this demonstration runs only on this thread
+    auto on_sent = [&](const stepwright::error& e) { sent = !e; };
+    send_three.start(stepwright::completion::to(on_sent)); // waits: the channel is full
+    std::printf("pulled %d\n", small.try_pull().value());  // makes room: the send completes
+    std::printf("waiting send completed: %s\n", sent ? "yes" : "failed");
     const int two = small.try_pull().value();
     const int three = small.try_pull().value();
     std::printf("pulled %d, then %d\n", two, three);
@@ -78,21 +76,22 @@ int main() {
         most_buffered = std::max({most_buffered, left.size(), right.size()});
     });
     consumer.bind(pool);
-    example::waiter consumer_done;
-    consumer.start(consumer_done.callback());
+    stepwright::event consumer_done; // publish the result safely back to main
+    auto on_consumed = [&](const stepwright::error& e) { consumer_done.set(e); };
+    consumer.start(stepwright::completion::to(on_consumed));
 
     std::deque<example::producer> machines;
-    std::vector<stepwright::task*> tasks;
     for (std::uint64_t i = 0; i < producers; ++i) {
         auto& out = i % 2 == 0 ? left : right;
-        tasks.push_back(&machines.emplace_back(pool, out, i * per_producer, per_producer));
+        machines.emplace_back(pool, out, i * per_producer, per_producer);
     }
-    stepwright::when_all_range all_producers(tasks);
-    const stepwright::error produced = example::run_blocking(all_producers);
+    stepwright::when_all_range all_producers(machines);
+    const stepwright::error produced = stepwright::sync_wait(all_producers);
 
     left.close(); // the consumer drains what is buffered, then for_each ends
     right.close();
-    const stepwright::error consumed = consumer_done.wait();
+    auto finished = consumer_done.wait();
+    const stepwright::error consumed = stepwright::sync_wait(finished);
     pool.wait_idle();
 
     const std::uint64_t total = producers * per_producer;

@@ -260,12 +260,23 @@ class channel<T>::send_op final : public detail::async_op, private detail::wait_
 public:
     /// Bind to ch with the value to send.
     send_op(channel& ch, T value) noexcept : channel_(&ch), value_(std::move(value)) {}
+    /// Bind an idle, reusable operation with a default value.
+    explicit send_op(channel& ch) noexcept(std::is_nothrow_default_constructible_v<T>)
+        requires std::is_default_constructible_v<T>
+        : send_op(ch, T{}) {}
     send_op(const send_op&) = delete;
     send_op& operator=(const send_op&) = delete;
     /// Destroy only while idle (Debug asserts).
     ~send_op() override = default;
     /// The value to send (moved-from once it has been enqueued).
     T& value() noexcept { return value_; }
+    /// Replace the value for the next run; only while idle, serialized with start.
+    send_op& with(T value) noexcept {
+        STEPWRIGHT_ASSERT(idle(), "send_op::with while active");
+        std::destroy_at(&value_);
+        std::construct_at(&value_, std::move(value));
+        return *this;
+    }
 
 private:
     friend class channel;

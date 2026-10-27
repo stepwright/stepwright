@@ -184,6 +184,14 @@ protected:
         transition.result = std::move(result);
         return transition;
     }
+    /// Create a code/message failure with error::make's ownership and context.
+    /// Deduction keeps existing fail({}) calls unambiguous (end).
+    template <class Code>
+        requires(std::is_same_v<Code, errc> || std::is_same_v<Code, std::errc> ||
+                 std::is_same_v<Code, std::error_code>)
+    static step fail(Code code, std::string_view message = {}) {
+        return fail(error::make(code, message));
+    }
     template <auto Fn>
     /// Hand value to the consumer; Fn runs on the following pull.
     step emit(T value) noexcept {

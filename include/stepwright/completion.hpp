@@ -3,6 +3,10 @@
 #include <stepwright/config.hpp>
 #include <stepwright/error.hpp>
 
+#include <functional>
+#include <memory>
+#include <type_traits>
+
 namespace stepwright {
 /// Non-owning, allocation-free completion target. Copy freely, but do not mutate
 /// a target while invoking that same object. ctx and its receiver must outlive the
@@ -32,5 +36,19 @@ struct completion {
                      const error& result) noexcept { (static_cast<C*>(context)->*MemFn)(result); },
             .ctx = obj};
     }
+    /// Borrow an lvalue callable until invocation; no allocation or ownership.
+    /// Exceptions escaping the callable terminate. Its own thread-safety applies.
+    template <class F>
+        requires(std::is_object_v<F> && std::is_invocable_v<F&, const error&>)
+    static completion to(F& f) noexcept {
+        return {.fn =
+                    [](void* context, const error& result) noexcept {
+                        std::invoke(*static_cast<F*>(context), result);
+                    },
+                .ctx = const_cast<void*>(static_cast<const void*>(std::addressof(f)))};
+    }
+    template <class F>
+    /// Rejected: a temporary callable would leave a dangling completion.
+    static completion to(const F&& f) = delete;
 };
 } // namespace stepwright

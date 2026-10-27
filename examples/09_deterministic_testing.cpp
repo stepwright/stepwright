@@ -10,7 +10,8 @@
 // in for an asynchronous call), and write back the balance minus their amount.
 // Some interleavings lose an update. We sweep 200 seeds, replay the first
 // failing one with a trace, then show that async_mutex::guarded fixes it.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -61,10 +62,7 @@ int run_once(std::uint64_t seed, bool locked, account& acct) {
     stepwright::task& first = locked ? static_cast<stepwright::task&>(guarded_a) : a;
     stepwright::task& second = locked ? static_cast<stepwright::task&>(guarded_b) : b;
     stepwright::when_all both(first, second);
-    waiter done;
-    both.start(done.callback());
-    ex.run_until_quiescent(); // runs everything: no threads, no real time
-    return done.wait() ? -1 : acct.balance;
+    return ex.run(both) ? -1 : acct.balance; // no threads, no real time
 }
 
 struct sweep {
@@ -90,9 +88,7 @@ int main() {
     // Virtual time: a 5 s delay completes as soon as nothing else is ready.
     stepwright::testing::virtual_executor clock;
     stepwright::delay five_seconds(clock, 5s);
-    example::waiter waited;
-    five_seconds.start(waited.callback());
-    clock.run_until_quiescent();
+    const auto waited = clock.run(five_seconds);
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(clock.now().time_since_epoch());
     std::printf("virtual time after a 5 s delay: %lld ms (no real waiting)\n",
@@ -113,8 +109,8 @@ int main() {
     const example::sweep fixed = example::explore(seeds, true);
     std::printf("with async_mutex::guarded: %d of %d seeds fail\n", fixed.failures, seeds);
 
-    const bool ok = !waited.wait() && elapsed == 5s && racy.failures > 0 && balance != 20 &&
-                    fixed.failures == 0;
+    const bool ok =
+        !waited && elapsed == 5s && racy.failures > 0 && balance != 20 && fixed.failures == 0;
     return ok ? 0 : 1;
 }
 

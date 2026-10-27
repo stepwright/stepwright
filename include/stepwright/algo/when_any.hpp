@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stepwright/detail/join.hpp>
+#include <stepwright/detail/task_range.hpp>
 
 #include <array>
 #include <concepts>
@@ -47,13 +48,29 @@ public:
     /// Race the given children (non-owning).
     explicit when_any_range(std::span<task* const> children)
         : join_base(mode::any)
+        , children_(children)
         , slots_(children.size()) {
         attach(children, slots_.data());
     }
+    template <detail::task_object_range R>
+    /// Copy addresses from a mutable sized/multipass lvalue range (one extra allocation).
+    /// Elements must keep stable addresses for this join's lifetime. Runs allocate
+    /// nothing; winner and structured cancellation semantics are unchanged.
+    explicit when_any_range(R& children)
+        : join_base(mode::any)
+        , children_(children)
+        , slots_(children_.view().size()) {
+        attach(children_.view(), slots_.data());
+    }
+    template <detail::task_object_range R>
+        requires(!std::is_lvalue_reference_v<R>)
+    /// Rejected: temporary task storage would dangle.
+    explicit when_any_range(R&& children) = delete;
     /// Index of the first child to complete; valid after completion.
     std::size_t winner() const noexcept { return winner_index(); }
 
 private:
+    detail::task_range children_;
     std::vector<slot> slots_;
 };
 } // namespace stepwright

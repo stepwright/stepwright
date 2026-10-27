@@ -13,8 +13,8 @@
 // also prints each entry's age and starting thread; they differ from run to
 // run, so this example cuts them off to keep its output reproducible.
 #include <stepwright/debug/live_tasks.hpp>
+#include <stepwright/stepwright.hpp>
 
-#include "example_support.hpp"
 #include <cstdio>
 #include <sstream>
 #include <string>
@@ -22,7 +22,7 @@
 namespace example {
 struct payment_listener : stepwright::machine<payment_listener> {
     step begin() { return park<&payment_listener::on_message>(); } // wake() never comes
-    step on_message(const stepwright::error& e) { return fail(e); }
+    step on_message() { return done(); } // a failed wake skips this automatically
 };
 
 struct order_workflow : stepwright::machine<order_workflow> {
@@ -58,10 +58,12 @@ int main() {
     example::order_workflow order(payment_confirmed);
     example::payment_listener listener;
 
-    example::waiter order_done;
-    example::waiter listener_done;
-    order.start(order_done.callback());
-    listener.start(listener_done.callback());
+    bool order_done = false;
+    bool listener_done = false; // these callbacks run on this thread
+    auto on_order = [&](const stepwright::error& e) { order_done = !e; };
+    auto on_listener = [&](const stepwright::error& e) { listener_done = !e; };
+    order.start(stepwright::completion::to(on_order));
+    listener.start(stepwright::completion::to(on_listener));
 
     std::printf("order shipped: %s; live machines: %zu\n", order.shipped ? "yes" : "no",
                 stepwright::debug::live_count());
@@ -70,7 +72,7 @@ int main() {
     // The dump points at both culprits. Deliver what they wait for:
     payment_confirmed.set();
     listener.wake();
-    const bool completed = !order_done.wait() && !listener_done.wait();
+    const bool completed = order_done && listener_done;
     std::printf("after the fix: order shipped: %s; live machines: %zu\n",
                 order.shipped ? "yes" : "no", stepwright::debug::live_count());
     return completed && order.shipped && stepwright::debug::live_count() == 0 ? 0 : 1;

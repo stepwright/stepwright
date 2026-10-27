@@ -22,6 +22,12 @@ public:
     delay& operator=(const delay&) = delete;
     /// Destroy only while idle (Debug asserts).
     ~delay() override = default;
+    /// Set the next run's duration while idle (not concurrent with start).
+    delay& with(timer_service::clock::duration d) noexcept {
+        STEPWRIGHT_ASSERT(idle(), "delay::with while active");
+        duration_ = d;
+        return *this;
+    }
 
 private:
     void on_start(completion done, cancel_token token) override {

@@ -16,8 +16,9 @@ what happens and why. Read them in order: each one builds on the previous ones.
 | [`09_deterministic_testing`](09_deterministic_testing.cpp) | `testing::virtual_executor`: virtual time, a race found over many seeds and replayed from one |
 | [`10_debugging_hangs`](10_debugging_hangs.cpp) | A stuck machine found with the live task registry's `dump()` (built with task tracking) |
 
-`example_support.hpp` holds the one helper they share: letting `main()` wait
-for a task (never do that inside a step).
+Use `sync_wait` from main for independently driven work, or `virtual_executor::run`
+for virtual-time programs. Never block inside a step. For familiar problems with
+plain C++ and stepwright side by side, start with [Learn by example](learn/README.md).
 
 ## Running
 
@@ -39,9 +40,9 @@ no timings, no thread identities, no addresses.
   pool, not on the thread that happened to deliver the result.
 - **Never block in a step.** Wait with a transition instead: `after(child)` for
   a task, `park()` for an external `wake()`, `defer()` to yield to the executor.
-- **Children are members.** A machine owns the tasks it starts (or
-  `std::optional` of them when they need per-run arguments), so starting them
-  never allocates and their lifetime is obvious.
+- **Children are members.** Re-arm sends, publications and timers with `with(...)`
+  while idle. Use `std::optional` only when a child really needs reconstruction;
+  starting an embedded child never allocates and its lifetime is obvious.
 - **Pass cancellation down, not around.** Start the root with a token; machines
   hand their token to every child. Give a machine an `on_cancel()` hook only
   when it must stop external work, and use `wake_if_parked()` in it.

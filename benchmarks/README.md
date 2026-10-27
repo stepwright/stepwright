@@ -64,6 +64,16 @@ and benchmark sources identifies the measured source even in an uncommitted tree
 
 ## What each benchmark measures
 
+### `bench_usability.cpp`: convenience wrappers
+
+`BM_sequence/{4,64,1024}` measures one child in a reusable `sequence_range` over
+synchronous tasks. `BM_handwritten_sequence` does identical index/token checking
+and child starts in a hand-written machine, with construction and pointer storage
+outside timing in both cases. `BM_sync_wait_synchronous` measures a full blocking
+bridge call on a synchronously completing task, including its stack waiter and
+mutex/condition-variable lifecycle. These use CPU time; neither workload allocates
+inside the timed loop. Select them with `BENCH_ARGS="--benchmark_filter=sequence|sync_wait"`.
+
 ### `bench_engine.cpp`: the machine engine
 
 | Benchmark | Item | Notes and baseline |

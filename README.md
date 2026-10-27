@@ -11,29 +11,17 @@ loop does it. State and children are ordinary members, not hidden frames:
 #include <stepwright/stepwright.hpp>
 #include <chrono>
 #include <cstdio>
-
 struct reminder : stepwright::machine<reminder> {
     stepwright::delay pause;
     explicit reminder(stepwright::timer_service& timers)
         : pause(timers, std::chrono::milliseconds(25)) {}
     step begin() { return after<&reminder::announce>(pause); }
-    step announce() { // skipped automatically if the child failed
-        std::puts("ready");
-        return done();
-    }
+    step announce() { std::puts("ready"); return done(); }
 };
-
 int main() {
-    // Virtual time makes this demo instant. A steady_timer_service works too.
     stepwright::testing::virtual_executor clock;
     reminder op(clock);
-    bool succeeded = false;
-    op.start({.fn = [](void* ctx, const stepwright::error& e) noexcept {
-                  *static_cast<bool*>(ctx) = !e;
-              },
-              .ctx = &succeeded});
-    clock.run_until_quiescent();
-    return succeeded ? 0 : 1;
+    return clock.run(op) ? 1 : 0;
 }
 ```
 
@@ -41,6 +29,15 @@ Build this as `c++ -std=c++20 -pthread -Iinclude demo.cpp -o demo`, or link the
 CMake interface target below. The [guide](docs/guide.md) starts with the task and
 lifetime contracts; [ten runnable examples](examples/README.md) show real timers,
 thread pools, cancellation, backpressure and deterministic race replay.
+Virtual time makes this demo instant; for real timers use a `steady_timer_service`
+and `sync_wait(op)` from main, never from a step or executor worker.
+
+## Learn by example
+
+[Seven side-by-side programs](examples/learn/README.md) compare plain C++ with
+machines: factorial, Fibonacci, parallel sorting and summation, deep chains,
+retry and deadlines. Prefer plain loops for synchronous numeric work; use
+stepwright when work needs to wait, share threads or support cancellation.
 
 ## Why stepwright?
 
@@ -50,8 +47,9 @@ thread pools, cancellation, backpressure and deterministic race replay.
   dispatch and constant-stack driver loops, including synchronous child chains.
 - **Structured work.** Tokens propagate to children. Joins and deadlines wait for
   all started work to finish; errors are values with machine-name context.
-- **Useful building blocks.** Events, shared tasks, async mutexes, joins, timers,
-  pull streams, channels, merge, broadcast and a work-stealing pool.
+- **Useful building blocks.** Blocking and virtual-time run helpers, container
+  joins, sequences, cancellable retry/backoff, reusable waits, events, shared
+  tasks, async mutexes, timers, pull streams and a work-stealing pool.
 - **Testable scheduling.** Manual time and a seeded virtual executor explore and
   replay interleavings without real sleeps.
 
@@ -169,6 +167,7 @@ beat a compiler-elided coroutine or a simple hand-written callback.
 - [Overview](docs/overview.md) · [engine](docs/design/engine.md) ·
   [primitives](docs/design/primitives.md) · [streams](docs/design/streams.md) ·
   [runtime](docs/design/runtime.md) · [performance design](docs/design/performance.md)
+  · [composition correctness](docs/design/composition.md)
 - [Design provenance](docs/provenance.md) · [changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md) · [code of conduct](CODE_OF_CONDUCT.md) ·
   [security policy](SECURITY.md)

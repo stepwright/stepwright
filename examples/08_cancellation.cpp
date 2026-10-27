@@ -14,7 +14,8 @@
 // A cancel_callback registers any callable on a token, for code that is not a
 // machine. The callbacks of one request run in no particular order, so this
 // example records what happened and prints it afterwards.
-#include "example_support.hpp"
+#include <stepwright/stepwright.hpp>
+
 #include <cstdio>
 
 namespace example {
@@ -34,7 +35,7 @@ struct transfer : stepwright::machine<transfer> {
         socket->waiting = this;
         return park<&transfer::on_reply>(); // until someone calls wake(...)
     }
-    step on_reply(const stepwright::error& e) {
+    step on_reply(const stepwright::error& e) { // cleanup and record failures as well as success
         socket->waiting = nullptr;
         result = e;
         return fail(e);
@@ -50,7 +51,7 @@ struct transfer : stepwright::machine<transfer> {
 struct heartbeat : stepwright::machine<heartbeat> {
     stepwright::error result;
     step begin() { return park<&heartbeat::on_tick>(); }
-    step on_tick(const stepwright::error& e) {
+    step on_tick(const stepwright::error& e) { // retain cancellation for the report below
         result = e;
         return fail(e);
     }
@@ -65,8 +66,7 @@ struct session : stepwright::machine<session> {
     const transfer& transfer_child() const noexcept { return transfer_; }
     const heartbeat& heartbeat_child() const noexcept { return heartbeat_; }
 
-    step begin() { return after<&session::on_children>(both_); }
-    step on_children(const stepwright::error& e) { return fail(e); }
+    step begin() { return forward(both_); }
 
 private:
     transfer transfer_;
@@ -90,11 +90,11 @@ int main() {
     bool noted = false;
     stepwright::cancel_callback note(source.token(), [&noted] { noted = true; });
 
-    example::waiter done;
-    session.start(done.callback(), source.token());
+    stepwright::error e; // callbacks run here, on this thread
+    auto on_done = [&](const stepwright::error& result) { e = result; };
+    session.start(stepwright::completion::to(on_done), source.token());
     std::printf("session started; transfer parked: %s\n", socket.waiting ? "yes" : "no");
     source.request_cancel(); // runs every callback here, on this thread
-    const stepwright::error e = done.wait();
 
     const auto& transfer = session.transfer_child();
     std::printf("cancel_callback ran: %s\n", noted ? "yes" : "no");
@@ -106,7 +106,7 @@ int main() {
 
     // A token that is already cancelled: a machine parks and is cancelled at once.
     example::heartbeat late;
-    const stepwright::error late_result = example::run_blocking(late, source.token());
+    const stepwright::error late_result = stepwright::sync_wait(late, source.token());
     std::printf("late heartbeat: %s\n", example::outcome(late_result));
 
     const bool ok = noted && socket.aborted && e.is(stepwright::errc::cancelled) &&
