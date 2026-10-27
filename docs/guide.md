@@ -7,6 +7,26 @@ or [example 01](../examples/01_first_machine.cpp). Every C++ block on this page 
 in the README is extracted, compiled and run by the test suite, not maintained as
 an unchecked duplicate. The [examples](../examples/README.md) are tested too.
 
+## Transitions at a glance
+
+Each step returns one transition; the driver acts **after** the step returns.
+Store children in members, not step-local variables. Name the class explicitly:
+
+| Transition | What it does | Use it when… |
+|---|---|---|
+| `done()` | Complete successfully. | The operation has finished. |
+| `fail(e)` / `fail(code, "message")` | Complete with context; empty error/zero code is success. | You must report or propagate a failure. |
+| `then<&D::f>()` | Run f in the same loop. | More synchronous work remains; no recursion. |
+| `after<&D::f>(child)` | Start child with this token, then run f. | The next step needs a child's result. |
+| `forward(child)` | Start child and finish with its result. | There is no work after the child. |
+| `park<&D::f>()` | Wait for an external `wake`. | A callback/I/O adapter delivers the result. |
+| `defer<&D::f>()` | Post f to the bound home executor. | You need a first hop or a fairness yield. |
+| `emit<&D::f>(value)` / `end()` | Yield one item / finish a source. | A `source_machine` produces a pull stream (no `done` or `forward`). |
+
+No-argument continuations skip failures automatically. Take `const error&` only
+to inspect/recover from failure, or to run cleanup on both outcomes. Neither a
+transition nor cancellation extends the lifetime of a borrowed child or waker.
+
 ## Tasks, completions and machines
 
 A **task** is an operation started with a nonempty **completion** and optional
@@ -24,16 +44,6 @@ keeps synchronous chains at constant stack depth. Steps are statically selected
 by member-function-pointer template arguments, while the task start protocol is
 polymorphic. Keep step functions accessible to the base (public, or friend it).
 
-| Transition | Meaning |
-|---|---|
-| `done()` | Complete successfully. |
-| `fail(e)` | Complete with e (empty e is success), adding failure context. |
-| `then<&D::f>()` | Run f in the same loop with an empty error. |
-| `after<&D::f>(child)` | Start child with this token; resume at f with its result. |
-| `forward(child)` | Start child, then complete with its result. |
-| `park<&D::f>()` | Wait for the current or next external wake. |
-| `defer<&D::f>()` | Post f to the bound home executor; binding is required. |
-
 A step is `step f()` or `step f(const stepwright::error&)`, optionally noexcept.
 **A no-argument continuation is skipped on failure**: the driver propagates the
 failure instead. An error-taking continuation explicitly handles it, including
@@ -48,6 +58,81 @@ Never deliver completion, start children or call user callbacks under an interna
 lock. Exceptions escaping steps, hooks or noexcept callbacks terminate, rather
 than becoming task errors.
 
+## Starting and waiting
+
+`sync_wait(task&, token = {})` starts an idle task and blocks until it completes,
+returning a copy of the error. It handles synchronous, pool and timer completions
+without allocating waiter storage. Use it at the application's synchronous edge,
+never inside a step, a pool worker or a hand-off callback. Debug detects the latter
+two; it cannot detect every dependency cycle. Its mutex/notification ordering
+makes stack teardown safe even when the completing call has not returned yet.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+#include <chrono>
+int main() {
+    stepwright::steady_timer_service timers;
+    stepwright::delay pause(timers, std::chrono::milliseconds(1));
+    return stepwright::sync_wait(pause) ? 1 : 0;
+}
+```
+
+For `testing::virtual_executor`, use `ex.run(task, token = {})`: it starts the task
+and drives ready work and virtual time **only until that task completes**, leaving
+unrelated work queued. Never `sync_wait` work that this thread must drive (including
+manual executors). With a manual executor, start with a completion and drive it
+explicitly. `run` supports one outstanding task, not recursive/concurrent `run`s;
+nested `run_*` driving remains supported.
+
+If nothing can run, `run` returns `resource_deadlock_would_occur` with message
+`task cannot complete: nothing left to run`, without a Debug assertion. **The task
+is still active.** The executor retains its completion state, not a dangling stack
+receiver. Cancel or otherwise resolve the task, then call `run` on the **same task**
+to settle the existing start before destroying either. The second call does not
+start it again and does not replace its original token.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+struct parked : stepwright::machine<parked> {
+    step begin() { return park<&parked::resume>(); }
+    step resume() { return done(); }
+};
+int main() {
+    stepwright::testing::virtual_executor ex;
+    stepwright::cancel_source stop;
+    parked op;
+    auto stalled = ex.run(op, stop.token());
+    stop.request_cancel();
+    auto settled = ex.run(op);
+    return stalled.code() == std::errc::resource_deadlock_would_occur &&
+                   settled.is(stepwright::errc::cancelled) ? 0 : 1;
+}
+```
+
+### Callable completions
+
+`completion::to(f)` borrows an lvalue callable object invocable with `const error&`.
+Keep it and its captures alive until invocation; rvalues are rejected. There is
+no ownership or allocation, and exceptions escaping the noexcept thunk terminate.
+Use external synchronisation when publishing results across threads.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+struct check : stepwright::machine<check> {
+    step begin() { return fail(std::errc::invalid_argument, "empty name"); }
+};
+int main() {
+    check op;
+    bool expected = false;
+    auto on_done = [&](const stepwright::error& e) {
+        expected = e.code() == std::errc::invalid_argument && e.message() == "empty name" &&
+                   e.context().size() == 1;
+    };
+    op.start(stepwright::completion::to(on_done)); // synchronous in this program
+    return expected ? 0 : 1;
+}
+```
+
 ## Errors and context
 
 An empty `error` is success and does no reference-count work. `error::make`
@@ -59,7 +144,10 @@ strings are retained and later drops counted. Context mutation is copy-on-write:
 changing a copy does not change another thread's error. Distinct handles are safe
 on different threads; mutation of the same handle needs synchronisation. Views
 from `message` and `context` borrow the payload. `describe()` allocates a formatted
-string. See [example 01](../examples/01_first_machine.cpp) for propagation.
+string. In task and source machines, `fail(code, message = {})` accepts `errc`,
+`std::errc` or `std::error_code` and is exactly `fail(error::make(code, message))`,
+including context. `fail(error)` (including `fail({})`) remains unchanged.
+See [example 01](../examples/01_first_machine.cpp) for propagation.
 
 ```cpp
 #include <stepwright/error.hpp>
@@ -183,6 +271,99 @@ internal cancellation state; large range joins allocate completion shards and ra
 races allocate result slots once. Children must be distinct idle tasks, not shared
 concurrently among starts. [Fan-out](../examples/03_fan_out.cpp) and
 [mutex](../examples/04_async_mutex.cpp) examples show composition and cleanup.
+
+### Joins over containers
+
+Alternatively pass a mutable **sized or multipass lvalue range of task objects**, such as
+`deque<fetch>` or `array<fetch,N>`, directly to `when_all_range`/`when_any_range`.
+One construction-time allocation copies the addresses; it never copies tasks.
+The elements must keep stable addresses for the join's whole lifetime (do not
+resize a vector of tasks). Temporary and const object ranges are rejected.
+Pointer-span constructors still borrow their storage without copying. Existing
+policies, cancellation, winner indices and structured completion are unchanged.
+Unsized forward ranges are counted before allocating; unsized single-pass input
+ranges are excluded because they cannot be copied with a single allocation.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+#include <deque>
+struct fetch : stepwright::machine<fetch> {
+    int calls = 0;
+    step begin() { ++calls; return done(); }
+};
+int main() {
+    std::deque<fetch> chunks(4); // stable, nonmoving tasks
+    stepwright::when_all_range all(chunks, stepwright::when_all_policy::run_all);
+    return !stepwright::sync_wait(all) && chunks.back().calls == 1 ? 0 : 1;
+}
+```
+
+### Reusable operations
+
+Construct a `channel<T>::send_op` or `broadcast<T>::publish_op` with only its owner
+when T is default-constructible, then `op.with(value)` for each run. The operation
+stays embedded, with no `optional` or reconstruction. `delay::with(duration)` and
+`with_deadline::with(timeout)` change the next run's timing. These setters return
+`*this` and require idle operations, serialized with start; Debug asserts on active
+use. Sends/publications replace their stored value even for nonassignable T;
+failed/cancelled sends retain it until replaced. They do not reset their owners.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+#include <chrono>
+int main() {
+    stepwright::channel<int> queue(2);
+    stepwright::channel<int>::send_op send(queue);
+    if (stepwright::sync_wait(send.with(4))) return 1;
+    if (stepwright::sync_wait(send.with(5))) return 1;
+    stepwright::testing::virtual_executor ex;
+    stepwright::delay pause(ex, {});
+    if (ex.run(pause.with(std::chrono::seconds(2)))) return 1;
+    return queue.try_pull().value() + queue.try_pull().value() == 9 ? 0 : 1;
+}
+```
+
+### Sequence and retry
+
+`sequence(a,b,...)` runs borrowed children one at a time with the start token.
+`sequence_range` accepts a borrowed pointer span or a container as above. The
+first failure stops it without starting the rest; cancellation between children
+prevents the next start. Empty sequences succeed. Restartable, constant-stack
+even with 100,000 synchronous children, with no per-run allocation.
+
+`retry(inner, timers, policy)` restarts a restartable inner task after retryable
+failures, using an embedded cancellable delay. `retry_policy` defaults to three
+total attempts, 100 ms initial backoff, multiplier 2, cap 30 s, retrying every
+failure except `errc::cancelled`. Attempts include the first run; `attempts()` is
+valid on the driving thread or after synchronising completion. A non-null noexcept
+`should_retry` predicate may filter failures. Nonnegative backoffs (including zero)
+and a finite multiplier >= 1 are required; the initial wait is capped too. There
+is **no jitter**: waits are deterministic, capped and rounded down to clock ticks.
+Cancellation during backoff completes with `cancelled`, without another attempt.
+Each restart resets the counter and backoff. The wrapper allocates nothing per
+run; error creation/context and the inner task retain their normal costs.
+
+```cpp
+#include <stepwright/stepwright.hpp>
+#include <chrono>
+struct download : stepwright::machine<download> {
+    int calls = 0;
+    step begin() {
+        if (++calls < 3) return fail(std::errc::io_error, "try again");
+        return done();
+    }
+};
+int main() {
+    stepwright::testing::virtual_executor ex;
+    download file;
+    stepwright::retry retried(file, ex, {.max_attempts = 3,
+        .initial_backoff = std::chrono::seconds(1)});
+    stepwright::delay verify(ex, std::chrono::seconds(1));
+    stepwright::sequence workflow(retried, verify);
+    return !ex.run(workflow) && retried.attempts() == 3 &&
+                   ex.now().time_since_epoch() == std::chrono::seconds(4) ? 0 : 1;
+}
+```
 
 ## Timers and deadlines
 
@@ -374,11 +555,9 @@ completed stream resets itself.
 with completion. The completion error is the error channel; it is not a type-erased
 result container. Streams carry typed values in `pull<T>`.
 
-**Can I block main until completion?** Yes, outside executors. See the
-condition-variable helper in [example_support.hpp](../examples/example_support.hpp).
-Its notification happens while holding its mutex so the waiting thread cannot
-destroy the target before notification has finished. Do not copy it into a worker
-that must run work needed for its own result.
+**Can I block main until completion?** Yes: `sync_wait(op)` for independently driven
+work, `ex.run(op)` for virtual time. See “Starting and waiting” above.
+Never block a worker or a caller that must drive its own result.
 
 **Are debug checks a recovery mechanism?** No. Preconditions apply in Release too.
 Debug diagnoses active destruction, double start and invalid waits; disabling the

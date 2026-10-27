@@ -7,6 +7,15 @@ versions. Move the Unreleased section to a dated version heading when releasing.
 
 ## [Unreleased]
 
+### Added
+- Stack-allocated, teardown-safe `sync_wait`, virtual-executor `run`, lvalue
+  callable completions, and code/message `fail` helpers.
+- Container constructors for range joins, sequential composition, and
+  deterministic cancellable retry with capped exponential backoff.
+- Reusable channel sends, broadcast publications, delays and deadline timeouts.
+- A transition cheat sheet, shorter runnable examples, seven side-by-side
+  learning programs, and helper allocation/stack/teardown tests and benchmarks.
+
 ## [0.1.0] - 2026-10-27
 
 ### Added
