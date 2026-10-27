@@ -7,6 +7,8 @@ versions. Move the Unreleased section to a dated version heading when releasing.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-27
+
 ### Added
 - First public release: header-only C++20 explicit task and source machines,
   constant-stack transitions, completion targets and contextual errors-as-values.

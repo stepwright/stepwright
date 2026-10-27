@@ -84,7 +84,7 @@ FetchContent_MakeAvailable(stepwright)
 target_link_libraries(my_app PRIVATE stepwright::stepwright)
 ```
 
-`v0.1.0` is the release tag; before it exists, pin a reviewed commit instead.
+`v0.1.0` is the first release tag.
 `my_app` denotes your existing executable/library target.
 
 ### Installed package
