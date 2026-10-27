@@ -17,7 +17,8 @@ what happens and why. Read them in order: each one builds on the previous ones.
 | [`10_debugging_hangs`](10_debugging_hangs.cpp) | A stuck machine found with the live task registry's `dump()` (built with task tracking) |
 
 Use `sync_wait` from main for independently driven work, or `virtual_executor::run`
-for virtual-time programs. Never block inside a step.
+for virtual-time programs. Never block inside a step. For familiar problems with
+plain C++ and stepwright side by side, start with [Learn by example](learn/README.md).
 
 ## Running
 

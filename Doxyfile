@@ -1,7 +1,7 @@
 PROJECT_NAME           = stepwright
 PROJECT_BRIEF          = "Explicit asynchronous state machines for C++20"
 OUTPUT_DIRECTORY       = build/docs
-INPUT                  = include/stepwright README.md docs examples/README.md benchmarks/README.md \
+INPUT                  = include/stepwright README.md docs examples/README.md examples/learn/README.md benchmarks/README.md \
                          benchmarks/results CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md
 RECURSIVE              = YES
 FILE_PATTERNS          = *.hpp *.md
