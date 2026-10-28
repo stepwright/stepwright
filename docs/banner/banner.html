@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stepwright banner</title>
+<!-- Fonts: Space Grotesk, Inter and JetBrains Mono, all SIL Open Font License 1.1. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0F172A; --panel: #111A2E; --line: #1E293B; --text: #E2E8F0; --muted: #94A3B8;
+    --teal: #14B8A6; --indigo: #818CF8; --amber: #FBBF24;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; background: var(--bg); }
+  body {
+    position: relative; font-family: Inter, sans-serif; color: var(--text);
+    background:
+      radial-gradient(640px 420px at 88% 18%, rgba(129, 140, 248, 0.20), transparent 70%),
+      radial-gradient(560px 380px at 6% 100%, rgba(20, 184, 166, 0.18), transparent 70%),
+      var(--bg);
+  }
+  .left { position: absolute; left: 76px; top: 92px; width: 560px; }
+  .brand { display: flex; align-items: center; gap: 22px; }
+  .brand svg { width: 104px; height: 104px; flex: none; }
+  .wordmark { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 84px;
+              letter-spacing: -2px; line-height: 1; }
+  .tagline { margin-top: 34px; font-size: 31px; line-height: 1.32; font-weight: 500; }
+  .tagline em { font-style: normal; background: linear-gradient(90deg, var(--teal), var(--indigo));
+                -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chips { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px; width: 540px; }
+  .chip { font-size: 17px; font-weight: 500; color: #CBD5E1; padding: 7px 14px; border-radius: 999px;
+          border: 1px solid rgba(94, 234, 212, 0.35); background: rgba(20, 184, 166, 0.08); }
+  .foot { position: absolute; left: 78px; bottom: 50px; font-size: 17px; color: var(--muted);
+          letter-spacing: 0.2px; }
+  .foot b { color: #CBD5E1; font-weight: 600; }
+
+  .right { position: absolute; right: 64px; top: 92px; width: 556px; }
+  .card { border-radius: 18px;
+          background: var(--panel); border: 1px solid var(--line);
+          box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #334155; }
+  .file { margin-left: 10px; font: 500 15px "JetBrains Mono", monospace; color: var(--muted); }
+  pre { padding: 18px 24px 20px; font: 400 16.5px/1.6 "JetBrains Mono", monospace; color: #CBD5E1; }
+  .k { color: #A5B4FC; } .t { color: #5EEAD4; } .f { color: var(--amber); } .s { color: #86EFAC; }
+  .c { color: #64748B; }
+
+  .flow { margin-top: 22px; display: flex; align-items: center; justify-content: space-between; }
+  .node { font: 600 16px "JetBrains Mono", monospace; padding: 9px 14px; border-radius: 10px;
+          border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  .node.end { border-color: rgba(251, 191, 36, 0.6); color: var(--amber); }
+  .hop { flex: 1; position: relative; margin: 0 8px 0 10px; border-top: 2px dotted #94A3B8; }
+  .hop::after { content: ""; position: absolute; right: -2px; top: -6px; border: 5px solid transparent;
+                border-left: 7px solid #94A3B8; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand">
+      <svg viewBox="0 0 512 512" aria-label="stepwright logo">
+        <defs>
+          <linearGradient id="st" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0" stop-color="#14B8A6"/><stop offset="1" stop-color="#818CF8"/>
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="104" fill="#16213A"/>
+        <path d="M88 424 V340 a12 12 0 0 1 12 -12 H204 V244 a12 12 0 0 1 12 -12 H320 V148
+                 a12 12 0 0 1 12 -12 H412 a12 12 0 0 1 12 12 V424 Z" fill="url(#st)"/>
+        <g fill="none" stroke="#CBD5E1" stroke-width="13" stroke-linecap="round" stroke-dasharray="0.1 25">
+          <path d="M136 312 Q186 150 236 214"/>
+          <path d="M280 216 Q326 50 360 100"/>
+        </g>
+        <circle cx="372" cy="108" r="26" fill="#FBBF24"/>
+      </svg>
+      <div class="wordmark">stepwright</div>
+    </div>
+    <p class="tagline">Asynchronous C++20, written as<br><em>explicit, inspectable state machines.</em></p>
+    <div class="chips">
+      <span class="chip">header-only</span>
+      <span class="chip">no allocation per step</span>
+      <span class="chip">constant stack</span>
+      <span class="chip">structured cancellation</span>
+      <span class="chip">deterministic tests</span>
+    </div>
+  </div>
+  <p class="foot"><b>MIT</b> &nbsp;·&nbsp; macOS &amp; Linux &nbsp;·&nbsp; GCC 13+ &nbsp;·&nbsp; Clang 18+ &nbsp;·&nbsp; AppleClang 16+</p>
+
+  <div class="right">
+  <div class="card">
+    <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="file">reminder.cpp</span></div>
+<pre><span class="k">struct</span> <span class="t">reminder</span> : <span class="t">stepwright::machine</span>&lt;<span class="t">reminder</span>&gt; {
+    <span class="t">stepwright::delay</span> pause;
+    <span class="k">explicit</span> <span class="t">reminder</span>(<span class="t">stepwright::timer_service</span>&amp; t)
+        : pause(t, <span class="s">25ms</span>) {}
+    step <span class="f">begin</span>() {
+        <span class="k">return</span> after&lt;&amp;<span class="t">reminder</span>::<span class="f">announce</span>&gt;(pause);
+    }
+    step <span class="f">announce</span>() {
+        std::puts(<span class="s">"ready"</span>);
+        <span class="k">return</span> done();
+    }
+};</pre>
+  </div>
+  <div class="flow">
+    <span class="node">begin()</span><span class="hop"></span>
+    <span class="node">wait: pause</span><span class="hop"></span>
+    <span class="node">announce()</span><span class="hop"></span>
+    <span class="node end">done</span>
+  </div>
+  </div>
+</body>
+</html>

@@ -44,6 +44,11 @@ keeps synchronous chains at constant stack depth. Steps are statically selected
 by member-function-pointer template arguments, while the task start protocol is
 polymorphic. Keep step functions accessible to the base (public, or friend it).
 
+![The life of a machine: idle, running a step, waiting for a child, parked or deferred, then finished with success or an error](assets/diagrams/machine-lifecycle.svg)
+
+*Waiting states hold no thread. The [interactive version](diagrams/README.md) links
+each state to the code that implements it.*
+
 A step is `step f()` or `step f(const stepwright::error&)`, optionally noexcept.
 **A no-argument continuation is skipped on failure**: the driver propagates the
 failure instead. An error-taking continuation explicitly handles it, including

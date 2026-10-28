@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="898" viewBox="0 0 960 898" role="img" aria-label="stepwright benchmark comparison">
+<style>
+  text { font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1F2937; }
+  .title { font-size: 20px; font-weight: 700; }
+  .sub, .note, .foot { font-size: 12.5px; fill: #64748B; }
+  .panel { font-size: 15px; font-weight: 600; }
+  .label { font-size: 13.5px; fill: #475569; }
+  .label.ours { fill: #0F766E; font-weight: 600; }
+  .value { font-size: 12px; fill: #475569; font-variant-numeric: tabular-nums; }
+  .bar.ours.mac { fill: url(#ours); }
+  .bar.ours.linux { fill: url(#ours); opacity: 0.55; }
+  .bar.base.mac { fill: #94A3B8; }
+  .bar.base.linux { fill: #94A3B8; opacity: 0.5; }
+  .rule { stroke: #E2E8F0; }
+  @media (prefers-color-scheme: dark) {
+    text { fill: #E2E8F0; }
+    .sub, .note, .foot { fill: #94A3B8; }
+    .label { fill: #CBD5E1; }
+    .label.ours { fill: #5EEAD4; }
+    .value { fill: #CBD5E1; }
+    .bar.base.mac { fill: #64748B; }
+    .bar.base.linux { fill: #64748B; }
+    .rule { stroke: #1E293B; }
+  }
+</style>
+<defs><linearGradient id="ours" x1="0" x2="1"><stop offset="0" stop-color="#14B8A6"/><stop offset="1" stop-color="#818CF8"/></linearGradient></defs>
+<text class="title" x="24" y="34">stepwright next to familiar alternatives</text>
+<text class="sub" x="24" y="56">Each pair of bars: macOS first, Linux second (lighter). Coloured: stepwright; grey: the alternative.</text>
+<line class="rule" x1="24" x2="936" y1="74" y2="74"/>
+<text class="panel" x="24" y="110">Run the next step</text>
+<text class="note" x="936" y="110" text-anchor="end">own scale · lower is better</text>
+<text class="label ours" x="270" y="141" text-anchor="end">stepwright then()</text>
+<rect class="bar ours mac" x="300" y="126" width="370.1" height="11" rx="3"/>
+<text class="value" x="678.1" y="136">1.74 ns</text>
+<rect class="bar ours linux" x="300" y="140" width="560.0" height="11" rx="3"/>
+<text class="value" x="868.0" y="150">2.64 ns</text>
+<text class="label" x="270" y="180" text-anchor="end">function-pointer call</text>
+<rect class="bar base mac" x="300" y="165" width="152.9" height="11" rx="3"/>
+<text class="value" x="460.9" y="175">0.72 ns</text>
+<rect class="bar base linux" x="300" y="179" width="151.9" height="11" rx="3"/>
+<text class="value" x="459.9" y="189">0.72 ns</text>
+<text class="label" x="270" y="219" text-anchor="end">std::function call</text>
+<rect class="bar base mac" x="300" y="204" width="213.8" height="11" rx="3"/>
+<text class="value" x="521.8" y="214">1.01 ns</text>
+<rect class="bar base linux" x="300" y="218" width="207.6" height="11" rx="3"/>
+<text class="value" x="515.6" y="228">0.98 ns</text>
+<text class="panel" x="24" y="283">Await a child that completes at once</text>
+<text class="note" x="936" y="283" text-anchor="end">own scale · lower is better</text>
+<text class="label ours" x="270" y="314" text-anchor="end">stepwright after()</text>
+<rect class="bar ours mac" x="300" y="299" width="136.8" height="11" rx="3"/>
+<text class="value" x="444.8" y="309">3.98 ns</text>
+<rect class="bar ours linux" x="300" y="313" width="179.1" height="11" rx="3"/>
+<text class="value" x="487.1" y="323">5.22 ns</text>
+<text class="label" x="270" y="353" text-anchor="end">coroutine, visible child*</text>
+<rect class="bar base mac" x="300" y="338" width="46.3" height="11" rx="3"/>
+<text class="value" x="354.3" y="348">1.35 ns</text>
+<rect class="bar base linux" x="300" y="352" width="340.3" height="11" rx="3"/>
+<text class="value" x="648.3" y="362">9.91 ns</text>
+<text class="label" x="270" y="392" text-anchor="end">coroutine, opaque child</text>
+<rect class="bar base mac" x="300" y="377" width="560.0" height="11" rx="3"/>
+<text class="value" x="868.0" y="387">16.3 ns</text>
+<rect class="bar base linux" x="300" y="391" width="370.6" height="11" rx="3"/>
+<text class="value" x="678.6" y="401">10.8 ns</text>
+<text class="panel" x="24" y="456">Lock and unlock, uncontended</text>
+<text class="note" x="936" y="456" text-anchor="end">own scale · lower is better</text>
+<text class="label ours" x="270" y="487" text-anchor="end">stepwright async_mutex</text>
+<rect class="bar ours mac" x="300" y="472" width="489.0" height="11" rx="3"/>
+<text class="value" x="797.0" y="482">3.71 ns</text>
+<rect class="bar ours linux" x="300" y="486" width="413.3" height="11" rx="3"/>
+<text class="value" x="721.3" y="496">3.13 ns</text>
+<text class="label" x="270" y="526" text-anchor="end">std::mutex</text>
+<rect class="bar base mac" x="300" y="511" width="560.0" height="11" rx="3"/>
+<text class="value" x="868.0" y="521">4.24 ns</text>
+<rect class="bar base linux" x="300" y="525" width="433.7" height="11" rx="3"/>
+<text class="value" x="741.7" y="535">3.29 ns</text>
+<text class="panel" x="24" y="590">Send and receive on one thread</text>
+<text class="note" x="936" y="590" text-anchor="end">own scale · lower is better</text>
+<text class="label ours" x="270" y="621" text-anchor="end">stepwright channel</text>
+<rect class="bar ours mac" x="300" y="606" width="164.8" height="11" rx="3"/>
+<text class="value" x="472.8" y="616">3.11 ns</text>
+<rect class="bar ours linux" x="300" y="620" width="145.1" height="11" rx="3"/>
+<text class="value" x="453.1" y="630">2.73 ns</text>
+<text class="label" x="270" y="660" text-anchor="end">std::mutex + std::deque</text>
+<rect class="bar base mac" x="300" y="645" width="560.0" height="11" rx="3"/>
+<text class="value" x="868.0" y="655">10.5 ns</text>
+<rect class="bar base linux" x="300" y="659" width="430.3" height="11" rx="3"/>
+<text class="value" x="738.3" y="669">8.11 ns</text>
+<text class="panel" x="24" y="724">Repost work from eight workers</text>
+<text class="note" x="936" y="724" text-anchor="end">own scale · lower is better</text>
+<text class="label ours" x="270" y="755" text-anchor="end">stepwright thread_pool</text>
+<rect class="bar ours mac" x="300" y="740" width="4.5" height="11" rx="3"/>
+<text class="value" x="312.5" y="750">0.59 ns</text>
+<rect class="bar ours linux" x="300" y="754" width="4.7" height="11" rx="3"/>
+<text class="value" x="312.7" y="764">0.63 ns</text>
+<text class="label" x="270" y="794" text-anchor="end">mutex + deque + std::function pool</text>
+<rect class="bar base mac" x="300" y="779" width="497.5" height="11" rx="3"/>
+<text class="value" x="805.5" y="789">65.9 ns</text>
+<rect class="bar base linux" x="300" y="793" width="560.0" height="11" rx="3"/>
+<text class="value" x="868.0" y="803">74.1 ns</text>
+<line class="rule" x1="24" x2="936" y1="828" y2="828"/>
+<text class="foot" x="24" y="848">Median ns per item over ten repetitions · macOS: macOS (Apple M4 Max, AppleClang 16) · Linux: Linux arm64 (container, GCC 14)</text>
+<text class="foot" x="24" y="866">Commit 49fdca1 · raw results in benchmarks/results/2026-10-26</text>
+<text class="foot" x="24" y="884">* With AppleClang the visible child&#x27;s coroutine frame is elided; GCC allocates it. See docs/benchmarks.md.</text>
+</svg>

@@ -1,0 +1,236 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "The life of a machine",
+    "output": ".archify/diagrams/machine-lifecycle.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "repository": {
+      "url": "https://github.com/stepwright/stepwright.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "7f75a13f06b4a3b1e4250a94dbc2d38127de67a5"
+    },
+    "legend": {
+      "entries": {
+        "success": {
+          "label": "finished: success or error"
+        },
+        "waiting": {
+          "label": "waiting, holds no thread"
+        },
+        "active": {
+          "label": "running a step"
+        }
+      }
+    }
+  },
+  "mainPath": [
+    "idle",
+    "running",
+    "done"
+  ],
+  "states": [
+    {
+      "id": "idle",
+      "type": "start",
+      "label": "Idle",
+      "sublabel": "new or finished",
+      "tag": "restartable",
+      "step": "01",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 257,
+          "end_line": 273,
+          "label": "on_start"
+        }
+      ]
+    },
+    {
+      "id": "running",
+      "type": "active",
+      "label": "Running a step",
+      "sublabel": "then() loops here",
+      "tag": "driver loop",
+      "step": "02",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 399,
+          "end_line": 481,
+          "label": "drive"
+        }
+      ]
+    },
+    {
+      "id": "child",
+      "type": "waiting",
+      "label": "Awaiting child",
+      "sublabel": "after · forward",
+      "tag": "suspended",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 410,
+          "end_line": 424,
+          "label": "start child, await"
+        },
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 322,
+          "end_line": 366,
+          "label": "deliver_child, dispatch"
+        }
+      ]
+    },
+    {
+      "id": "parked",
+      "type": "waiting",
+      "label": "Parked",
+      "sublabel": "wake() or cancel",
+      "tag": "suspended",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 425,
+          "end_line": 453,
+          "label": "park"
+        },
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 63,
+          "end_line": 75,
+          "label": "wake"
+        }
+      ]
+    },
+    {
+      "id": "deferred",
+      "type": "waiting",
+      "label": "Deferred",
+      "sublabel": "home executor",
+      "tag": "suspended",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 454,
+          "end_line": 477,
+          "label": "defer"
+        }
+      ]
+    },
+    {
+      "id": "done",
+      "type": "success",
+      "label": "Finished",
+      "sublabel": "one completion",
+      "tag": "terminal",
+      "step": "03",
+      "sources": [
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 482,
+          "end_line": 513,
+          "label": "finish"
+        },
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 92,
+          "end_line": 109,
+          "label": "done, fail"
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "start",
+      "from": "idle",
+      "to": "running",
+      "label": "start → begin()",
+      "variant": "emphasis"
+    },
+    {
+      "id": "finish-ok",
+      "from": "running",
+      "to": "done",
+      "label": "done() or fail(e)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "await",
+      "from": "running",
+      "to": "child",
+      "label": "after(child)"
+    },
+    {
+      "id": "child-back",
+      "from": "child",
+      "to": "running",
+      "label": "child completed",
+      "note": "same loop if it finished at once"
+    },
+    {
+      "id": "park",
+      "from": "running",
+      "to": "parked",
+      "label": "park()"
+    },
+    {
+      "id": "woken",
+      "from": "parked",
+      "to": "running",
+      "label": "wake(result)",
+      "variant": "dashed",
+      "note": "or errc::cancelled"
+    },
+    {
+      "id": "defer",
+      "from": "running",
+      "to": "deferred",
+      "label": "defer()"
+    },
+    {
+      "id": "posted",
+      "from": "deferred",
+      "to": "running",
+      "label": "executor runs it",
+      "variant": "dashed"
+    },
+    {
+      "id": "restart-ok",
+      "from": "done",
+      "to": "idle",
+      "label": "start again"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Steps run one at a time",
+      "items": [
+        "Only the thread that owns the running state executes a step",
+        "Waiting states release the thread: no thread is blocked"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Where waits end",
+      "items": [
+        "A child completion, a wake() or the home executor resumes the machine",
+        "Synchronous completions continue in the same loop, without recursion"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Endings",
+      "items": [
+        "done() and fail(e) both deliver exactly one completion, carrying success or an error",
+        "A failed child ends the machine with that error when the next step takes no error argument",
+        "After it finishes, the receiver may start the machine again, or destroy it"
+      ]
+    }
+  ]
+}
