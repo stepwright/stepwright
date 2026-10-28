@@ -57,18 +57,24 @@ not to use C++20 coroutines.
 
 ## Architecture
 
-```
-┌──────────────────────────── streams ────────────────────────────┐
-│ source<T> · source_machine · channel · merge · broadcast · ...   │
-├──────────────────────────── primitives ─────────────────────────┤
-│ event · shared_task · async_mutex · async_shared_mutex           │
-│ when_all · when_any · with_deadline · make_task · finally · delay│
-├──────────────────────────── runtime ────────────────────────────┤
-│ executor · inline/manual executors · thread_pool · timer_service │
-│ virtual_executor (tests) · live task registry (debug)            │
-├──────────────────────────── core ───────────────────────────────┤
-│ error · completion · cancel · task · machine<D> (driver loop)    │
-└──────────────────────────────────────────────────────────────────┘
+![How stepwright runs an operation: your code starts a machine, the driver loop carries out each transition, a child completes on any thread and resumes the machine, or posts it to its home executor](assets/diagrams/runtime.svg)
+
+Primitives, composition and streams are built on the core; the runtime implements
+the core's executor and timer interfaces:
+
+```mermaid
+flowchart TB
+    PRIM["Primitives and composition<br/>event · shared_task · async_mutex · when_all · when_any<br/>sequence · retry · delay · with_deadline · sync_wait"]:::network
+    STR["Streams<br/>source#lt;T#gt; · source_machine · channel · merge<br/>broadcast · interval · for_each"]:::storage
+    RT["Runtime<br/>thread_pool · steady_timer_service<br/>inline and manual executors · virtual_executor"]:::client
+    CORE["Core<br/>machine#lt;D#gt; driver loop · task · completion · error · cancel_token<br/>executor and timer_service interfaces · opt-in live task registry"]:::server
+    PRIM -- "uses" --> CORE
+    STR -- "uses" --> CORE
+    RT -- "implements" --> CORE
+    classDef client  fill:#E6F0FB,stroke:#2F6DB5,stroke-width:1.5px,color:#123A66
+    classDef server  fill:#E1F4ED,stroke:#1E8A6E,stroke-width:1.5px,color:#0D4A3A
+    classDef storage fill:#FDF0D9,stroke:#C98A16,stroke-width:1.5px,color:#5B3D05
+    classDef network fill:#EDE9FB,stroke:#6A4FC0,stroke-width:1.5px,color:#33236B
 ```
 
 ### Core vocabulary
