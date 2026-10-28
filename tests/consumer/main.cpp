@@ -23,7 +23,7 @@ int main() {
               .ctx = &success});
     pool.wait_idle();
     return success && op.steps == 1 && peer_check() && stepwright::version.major == 0 &&
-                   stepwright::version.minor == 1
+                   stepwright::version.minor == 2
                ? 0
                : 1;
 }

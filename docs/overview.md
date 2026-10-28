@@ -92,19 +92,21 @@ flowchart TB
 
 ## Public roadmap
 
-v0.1 contains the machine engine and errors-as-values, structured cancellation,
+v0.2 contains the machine engine and errors-as-values, structured cancellation,
 events, shared tasks, asynchronous mutexes, fan-out joins and deadlines; pull
 streams with bounded channels, merging and broadcasting; inline/manual and
 work-stealing executors, manual/steady timers, a deterministic virtual executor
 and an opt-in live task registry. It includes runnable examples, reproducible
-benchmarks, design arguments and installable CMake/pkg-config packages.
+benchmarks, design arguments and installable CMake/pkg-config packages. v0.2 adds
+`sync_wait`, `virtual_executor::run`, `sequence`, `retry`, joins over containers
+and reusable operations, which make everyday code shorter.
 
 Possible future directions include a C++20 coroutine adapter, more executor and
 event-loop adapters, Windows support, and vcpkg/Conan packages. These are directions,
 not scheduled commitments. Compatibility within the 0.x series is minor-version
 scoped; check the changelog before upgrading.
 
-## Non-goals (v0.1)
+## Non-goals
 - Requiring coroutines (a coroutine adapter may come later).
 - Windows support.
 - I/O, networking or OS event loops (stepwright composes them; it doesn't

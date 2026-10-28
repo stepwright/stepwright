@@ -3,7 +3,7 @@
 /// Compile-time major version; safe in preprocessor conditions.
 #define STEPWRIGHT_VERSION_MAJOR 0
 /// Compile-time minor version (the compatibility series while major is zero).
-#define STEPWRIGHT_VERSION_MINOR 1
+#define STEPWRIGHT_VERSION_MINOR 2
 /// Compile-time patch version within the minor series.
 #define STEPWRIGHT_VERSION_PATCH 0
 
