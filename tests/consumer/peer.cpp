@@ -6,7 +6,7 @@
 bool peer_check();
 
 bool peer_check() {
-    static_assert(STEPWRIGHT_VERSION_MAJOR == 0 && STEPWRIGHT_VERSION_MINOR == 1);
+    static_assert(STEPWRIGHT_VERSION_MAJOR == 0 && STEPWRIGHT_VERSION_MINOR == 2);
     stepwright::channel<int> channel(1);
     if (!channel.try_send(42)) {
         return false;
