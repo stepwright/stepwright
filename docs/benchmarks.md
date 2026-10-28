@@ -11,7 +11,11 @@ item and explain CPU versus wall time, storage policies and coroutine elision.
 make bench BENCH_OUT=benchmarks/results/2026-10-26/macos BENCH_LABEL="macOS (Apple M4 Max, AppleClang 16)"
 COMPILER=gcc make docker-bench BENCH_OUT=benchmarks/results/2026-10-26/linux BENCH_LABEL="Linux arm64 (container, GCC 14)"
 python3 scripts/bench_report.py benchmarks/results/2026-10-26/macos benchmarks/results/2026-10-26/linux --update docs/benchmarks.md
+python3 scripts/bench_chart.py benchmarks/results/2026-10-26/macos benchmarks/results/2026-10-26/linux -o docs/assets/benchmarks.svg
 ```
+
+The README's chart, [`benchmarks.svg`](assets/benchmarks.svg), draws five of these
+comparisons from the same medians, each panel on its own scale.
 
 ## Conditions and interpretation
 
