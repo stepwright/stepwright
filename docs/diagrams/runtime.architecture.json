@@ -43,7 +43,7 @@
         90
       ],
       "size": [
-        150,
+        180,
         64
       ],
       "sources": [
@@ -67,7 +67,7 @@
       "label": "Your machine<D>",
       "sublabel": "steps return transitions",
       "pos": [
-        340,
+        385,
         90
       ],
       "size": [
@@ -80,6 +80,12 @@
           "line": 91,
           "end_line": 152,
           "label": "transition helpers"
+        },
+        {
+          "path": "include/stepwright/machine.hpp",
+          "line": 482,
+          "end_line": 513,
+          "label": "finish: completion"
         }
       ]
     },
@@ -89,8 +95,8 @@
       "label": "Driver loop",
       "sublabel": "carries out each transition",
       "pos": [
-        680,
-        90
+        385,
+        300
       ],
       "size": [
         180,
@@ -124,11 +130,11 @@
       "label": "Child task",
       "sublabel": "delay · join · mutex · channel",
       "pos": [
-        1030,
-        90
+        730,
+        300
       ],
       "size": [
-        190,
+        180,
         64
       ],
       "sources": [
@@ -156,7 +162,7 @@
         300
       ],
       "size": [
-        150,
+        180,
         64
       ],
       "sources": [
@@ -180,8 +186,8 @@
       "label": "Home executor",
       "sublabel": "thread_pool · virtual_executor",
       "pos": [
-        680,
-        300
+        385,
+        510
       ],
       "size": [
         180,
@@ -208,11 +214,11 @@
       "label": "Timer service",
       "sublabel": "steady or virtual time",
       "pos": [
-        1030,
-        300
+        730,
+        510
       ],
       "size": [
-        190,
+        180,
         64
       ],
       "sources": [
@@ -238,6 +244,12 @@
       "to": "machine",
       "label": "start(done, token)",
       "variant": "emphasis"
+    },
+    {
+      "id": "finished",
+      "from": "machine",
+      "to": "app",
+      "label": "completion(result)"
     },
     {
       "id": "returns",
@@ -294,16 +306,8 @@
     {
       "id": "cancel-hook",
       "from": "cancel",
-      "to": "machine",
-      "label": "on_cancel · wake park"
-    },
-    {
-      "id": "finished",
-      "from": "driver",
-      "to": "app",
-      "label": "done / fail → completion(result)",
-      "fromSide": "top",
-      "toSide": "top"
+      "to": "driver",
+      "label": "wake park · on_cancel"
     }
   ],
   "cards": [

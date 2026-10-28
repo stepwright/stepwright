@@ -68,7 +68,7 @@ makes this demo instant; with real timers, use a `steady_timer_service` and
 5. **`done()` or `fail(e)` delivers the result exactly once.** The machine can then
    be started again or destroyed.
 
-![The life of a machine: idle, running a step, waiting for a child, parked or deferred, then completed or failed](docs/assets/diagrams/machine-lifecycle.svg)
+![The life of a machine: idle, running a step, waiting for a child, parked or deferred, then finished with success or an error](docs/assets/diagrams/machine-lifecycle.svg)
 
 Each diagram's [interactive version](docs/diagrams/README.md) links every part
 to the code that implements it.

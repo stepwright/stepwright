@@ -11,6 +11,19 @@
       "provider": "github",
       "link_mode": "web",
       "revision": "7f75a13f06b4a3b1e4250a94dbc2d38127de67a5"
+    },
+    "legend": {
+      "entries": {
+        "success": {
+          "label": "finished: success or error"
+        },
+        "waiting": {
+          "label": "waiting, holds no thread"
+        },
+        "active": {
+          "label": "running a step"
+        }
+      }
     }
   },
   "mainPath": [
@@ -39,7 +52,7 @@
       "id": "running",
       "type": "active",
       "label": "Running a step",
-      "sublabel": "then() continues here",
+      "sublabel": "then() loops here",
       "tag": "driver loop",
       "step": "02",
       "sources": [
@@ -54,8 +67,8 @@
     {
       "id": "child",
       "type": "waiting",
-      "label": "Awaiting a child",
-      "sublabel": "after() · forward()",
+      "label": "Awaiting child",
+      "sublabel": "after · forward",
       "tag": "suspended",
       "sources": [
         {
@@ -76,7 +89,7 @@
       "id": "parked",
       "type": "waiting",
       "label": "Parked",
-      "sublabel": "until wake() or cancel",
+      "sublabel": "wake() or cancel",
       "tag": "suspended",
       "sources": [
         {
@@ -97,7 +110,7 @@
       "id": "deferred",
       "type": "waiting",
       "label": "Deferred",
-      "sublabel": "on the home executor",
+      "sublabel": "home executor",
       "tag": "suspended",
       "sources": [
         {
@@ -111,37 +124,22 @@
     {
       "id": "done",
       "type": "success",
-      "label": "Completed",
-      "sublabel": "done() → completion",
+      "label": "Finished",
+      "sublabel": "one completion",
       "tag": "terminal",
       "step": "03",
       "sources": [
         {
           "path": "include/stepwright/machine.hpp",
           "line": 482,
-          "end_line": 500,
+          "end_line": 513,
           "label": "finish"
         },
         {
           "path": "include/stepwright/machine.hpp",
           "line": 92,
-          "end_line": 93,
-          "label": "done"
-        }
-      ]
-    },
-    {
-      "id": "failed",
-      "type": "failure",
-      "label": "Failed",
-      "sublabel": "fail(e) → completion(e)",
-      "tag": "terminal",
-      "sources": [
-        {
-          "path": "include/stepwright/machine.hpp",
-          "line": 94,
           "end_line": 109,
-          "label": "fail"
+          "label": "done, fail"
         }
       ]
     }
@@ -158,15 +156,8 @@
       "id": "finish-ok",
       "from": "running",
       "to": "done",
-      "label": "done()",
+      "label": "done() or fail(e)",
       "variant": "emphasis"
-    },
-    {
-      "id": "finish-error",
-      "from": "running",
-      "to": "failed",
-      "label": "fail(e)",
-      "variant": "security"
     },
     {
       "id": "await",
@@ -236,9 +227,9 @@
       "dot": "rose",
       "title": "Endings",
       "items": [
-        "Exactly one completion per start, carrying success or an error",
+        "done() and fail(e) both deliver exactly one completion, carrying success or an error",
         "A failed child ends the machine with that error when the next step takes no error argument",
-        "After either ending the receiver may start the machine again, or destroy it"
+        "After it finishes, the receiver may start the machine again, or destroy it"
       ]
     }
   ]
