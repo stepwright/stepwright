@@ -1,8 +1,9 @@
 # Regenerating `docs/assets/banner.png`
 
-`banner.html` is a self-contained page rendered to a 1280×640 PNG: the size
-GitHub recommends for a repository's social-preview image, also used as the
-README banner. It uses three fonts under the SIL Open Font License 1.1, loaded
+`banner.html` is a self-contained 1280×640 page (the proportions GitHub
+recommends for a repository's social-preview image), rendered at twice that
+resolution, 2560×1280, so that it stays sharp on high-density screens. The same
+PNG is the README banner. It uses three fonts under the SIL Open Font License 1.1, loaded
 from Google Fonts: [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk)
 (the name), [Inter](https://fonts.google.com/specimen/Inter) (text) and
 [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) (code). The
@@ -15,7 +16,7 @@ time to load before the screenshot:
 cd docs/banner
 python3 -m http.server 8934 &
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --headless --disable-gpu --hide-scrollbars \
+  --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
   --window-size=1280,640 --virtual-time-budget=8000 \
   --screenshot=../assets/banner.png \
   http://localhost:8934/banner.html
