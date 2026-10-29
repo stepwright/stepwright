@@ -141,7 +141,7 @@ int main() {
 ## Errors and context
 
 An empty `error` is success and does no reference-count work. `error::make`
-owns a `std::error_code` and message in one allocation; copies share a payload.
+owns a `std::error_code` and message in one payload; copies share it.
 `is(errc)` checks a library code (`cancelled`, `timed_out`, `closed`,
 `broken_promise`). Generic and application-specific error codes work too.
 Each failing machine appends its type name; up to eight static-storage context
@@ -153,6 +153,24 @@ string. In task and source machines, `fail(code, message = {})` accepts `errc`,
 `std::errc` or `std::error_code` and is exactly `fail(error::make(code, message))`,
 including context. `fail(error)` (including `fail({})`) remains unchanged.
 See [example 01](../examples/01_first_machine.cpp) for propagation.
+
+Errors are cheap enough for timeouts and cancellations to be ordinary control
+flow:
+
+- A library code without a message (`error::make(errc::timed_out)`, the
+  library's own cancellations, closes and timeouts) shares a static payload: it
+  never allocates, and copying or destroying it does no reference counting.
+- Any other error whose message fits 144 bytes (on 64-bit targets) lives in a
+  fixed-size block recycled through a per-thread cache and a shared depot. It
+  is allocation-free in steady state, including when it is made on one thread
+  and released on another. Each thread's first errors, and refills before the
+  steady state is reached, may allocate.
+- Adding context clones a shared payload into such a block, so it does not
+  allocate beyond that either.
+- Longer messages allocate once per error (and once per copy-on-write clone),
+  and `describe()` allocates its string.
+- Under AddressSanitizer, blocks are not recycled, so that use-after-free of an
+  error stays detectable; library codes stay allocation-free.
 
 ```cpp
 #include <stepwright/error.hpp>
@@ -509,9 +527,15 @@ logging may allocate or block. Prefer the registry and breakpoints first.
 - A cancellation source allocates state once (currently 1,280 bytes shared by a token tree),
   joins allocate at construction, deadline/shared-task sources on first run,
   bounded buffers at construction and pools at construction. These are not
-  per-step allocations. Error creation/context copy-on-write/formatting,
-  diagnostic snapshots and callable `post` may allocate. Unbounded channels
-  allocate on growth. Your item types and callbacks may allocate too.
+  per-step allocations. Library control-flow errors without a message never
+  allocate; other errors with messages up to 144 bytes, and adding context, are
+  allocation-free in steady state (see "Errors and context" above).
+  Longer error messages, `describe()`, diagnostic snapshots and callable `post`
+  allocate. Unbounded channels allocate on growth. Your item types and callbacks
+  may allocate too.
+- Error recycling keeps up to 64 free 256-byte blocks per thread and up to
+  4,096 in a shared depot (about 1 MiB). Recycling is disabled under
+  AddressSanitizer, so allocation measurements there differ.
 - Prefer coarse enough leaf work to amortise dispatch. A trivial fan-out can be
   slower on more workers because one starter posts everything and steals cause
   cache traffic. Do not infer scaling from step-only microbenchmarks.
