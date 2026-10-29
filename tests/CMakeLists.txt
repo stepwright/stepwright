@@ -62,3 +62,5 @@ add_test(NAME regression_cppcheck_runner_failure
         bash ${PROJECT_SOURCE_DIR}/scripts/run-cppcheck.sh
         -b ${CMAKE_CURRENT_BINARY_DIR}/cppcheck-failure)
 set_tests_properties(regression_cppcheck_runner_failure PROPERTIES WILL_FAIL TRUE)
+add_test(NAME test_cmake_generator COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_cmake_generator.sh
+    ${PROJECT_SOURCE_DIR}/scripts/cmake_generator.sh ${CMAKE_CURRENT_BINARY_DIR})
