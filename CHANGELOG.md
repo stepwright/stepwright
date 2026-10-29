@@ -7,6 +7,8 @@ versions. Move the Unreleased section to a dated version heading when releasing.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-29
+
 ### Changed
 - Error paths no longer allocate in steady state. `error::make` for a library
   code without a message (`cancelled`, `timed_out`, `closed`, `broken_promise`)

@@ -144,7 +144,7 @@ only C++20 and threads. Developer dependencies are never fetched for consumers.
 include(FetchContent)
 FetchContent_Declare(stepwright
     GIT_REPOSITORY https://github.com/stepwright/stepwright.git
-    GIT_TAG v0.2.0)
+    GIT_TAG v0.2.1)
 FetchContent_MakeAvailable(stepwright)
 target_link_libraries(my_app PRIVATE stepwright::stepwright)
 ```
@@ -211,7 +211,7 @@ eight-worker pool costs 19.8 / 16.0 ns per item, and with about 1 µs of work pe
 item, eight workers finish a fan-out 8.5× / 6.5× faster than one.
 
 The figures were measured on v0.1.0; v0.2.0 leaves these paths unchanged (paired
-before/after runs within ±2.4%). They are measurements, not guarantees for your
+before/after runs within ±2.4%), and so does v0.2.1 (within ±4%). They are measurements, not guarantees for your
 workload: stepwright does not
 always beat a compiler-elided coroutine or a plain function call. The
 [published results](docs/benchmarks.md) include every case, its variation, and the

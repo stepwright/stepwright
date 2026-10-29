@@ -102,7 +102,9 @@ work-stealing executors, manual/steady timers, a deterministic virtual executor
 and an opt-in live task registry. It includes runnable examples, reproducible
 benchmarks, design arguments and installable CMake/pkg-config packages. v0.2 adds
 `sync_wait`, `virtual_executor::run`, `sequence`, `retry`, joins over containers
-and reusable operations, which make everyday code shorter.
+and reusable operations, which make everyday code shorter. v0.2.1 makes error
+paths (timeouts, cancellations, failures with short messages) allocation-free in
+steady state.
 
 Possible future directions include a C++20 coroutine adapter, more executor and
 event-loop adapters, Windows support, and vcpkg/Conan packages. These are directions,
