@@ -294,6 +294,19 @@ void BM_with_deadline_inner_first(benchmark::State& state) {
     }
     state.SetItemsProcessed(state.iterations());
 }
+
+// The timer wins: with_deadline cancels a pending delay (which completes with
+// errc::cancelled) and completes with errc::timed_out.
+void BM_deadline_timeout(benchmark::State& state) {
+    stepwright::testing::manual_timer_service timers;
+    stepwright::delay slow(timers, std::chrono::hours(1));
+    stepwright::with_deadline guarded(slow, timers, std::chrono::milliseconds(1));
+    for (auto _ : state) {
+        guarded.start(ignored);
+        timers.advance(std::chrono::milliseconds(1));
+    }
+    state.SetItemsProcessed(state.iterations());
+}
 } // namespace
 
 BENCHMARK(BM_event_set_wait)->Arg(1)->Arg(1000);
@@ -309,3 +322,4 @@ BENCHMARK(BM_when_any_sync)->Arg(10);
 BENCHMARK(BM_timer_schedule_cancel_manual);
 BENCHMARK(BM_timer_schedule_cancel_steady);
 BENCHMARK(BM_with_deadline_inner_first);
+BENCHMARK(BM_deadline_timeout);
