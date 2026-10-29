@@ -59,7 +59,8 @@ TSan runs on native x86-64 CI runners.
 - Contribute only code you wrote or have the right to contribute under MIT.
 - Cite public prior art (papers, standards proposals and open-source designs)
   in `docs/provenance.md` when adding or redesigning a component.
-- Sign off contributions with `git commit -s` (DCO); see `CONTRIBUTING.md`.
+- Maintainer commits carry no `Signed-off-by` trailer: never use `git commit -s`
+  here. Outside contributors certify the DCO as described in `CONTRIBUTING.md`.
 
 ## Engineering rules
 - Never start a child task, fire a completion, or invoke user callbacks while
