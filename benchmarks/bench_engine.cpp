@@ -10,6 +10,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -149,6 +150,68 @@ void BM_error_propagation_depth(benchmark::State& state) {
         root->start(ignored);
     }
     state.SetItemsProcessed(state.iterations() * state.range(0));
+}
+
+constexpr std::string_view error_message = "query 17 failed: connection reset by peer";
+
+void BM_error_code_only(benchmark::State& state) {
+    for (auto _ : state) {
+        auto e = stepwright::error::make(stepwright::errc::timed_out);
+        benchmark::DoNotOptimize(e);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+
+void BM_error_message_context(benchmark::State& state) {
+    for (auto _ : state) {
+        auto e = stepwright::error::make(std::errc::connection_reset, error_message);
+        e.add_context("query_op");
+        e.add_context("transaction_op");
+        e.add_context("request_op");
+        benchmark::DoNotOptimize(e);
+    }
+    state.SetItemsProcessed(state.iterations());
+}
+
+// Errors made on the benchmark thread and released on a consumer thread, in
+// double-buffered batches so both threads work at once. Item: one error.
+void BM_error_cross_thread(benchmark::State& state) {
+    constexpr std::size_t batch = 64;
+    std::array<std::array<stepwright::error, batch>, 2> buffers;
+    std::atomic<std::int64_t> published{0};
+    std::atomic<std::int64_t> drained{0};
+    std::atomic<bool> stop{false};
+    std::thread consumer([&] {
+        for (std::int64_t round = 1;; ++round) {
+            while (published.load(std::memory_order_acquire) < round) {
+                if (stop.load(std::memory_order_acquire)) {
+                    return;
+                }
+                std::this_thread::yield();
+            }
+            for (auto& e : buffers[static_cast<std::size_t>(round % 2)]) {
+                e = {};
+            }
+            drained.store(round, std::memory_order_release);
+        }
+    });
+    std::int64_t round = 0;
+    for (auto _ : state) {
+        ++round;
+        while (drained.load(std::memory_order_acquire) < round - 2) {
+            std::this_thread::yield();
+        }
+        for (auto& e : buffers[static_cast<std::size_t>(round % 2)]) {
+            e = stepwright::error::make(std::errc::connection_reset, error_message);
+        }
+        published.store(round, std::memory_order_release);
+    }
+    while (drained.load(std::memory_order_acquire) < round) {
+        std::this_thread::yield();
+    }
+    stop.store(true, std::memory_order_release);
+    consumer.join();
+    state.SetItemsProcessed(state.iterations() * static_cast<std::int64_t>(batch));
 }
 
 struct fnptr_state {
@@ -339,6 +402,9 @@ BENCHMARK(BM_after_async_child_manual)->Arg(1000);
 BENCHMARK(BM_park_wake_same_thread)->Arg(1000);
 BENCHMARK(BM_park_wake_ping_pong_threads)->UseRealTime();
 BENCHMARK(BM_error_propagation_depth)->Arg(8);
+BENCHMARK(BM_error_code_only);
+BENCHMARK(BM_error_message_context);
+BENCHMARK(BM_error_cross_thread)->UseRealTime();
 BENCHMARK(BM_baseline_fnptr_chain)->Arg(1000);
 BENCHMARK(BM_baseline_std_function_chain)->Arg(1000);
 BENCHMARK(BM_coro_then_chain)->Arg(1000);

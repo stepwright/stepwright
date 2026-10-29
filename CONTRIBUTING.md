@@ -83,8 +83,9 @@ Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `style`
 `chore`. Wrap body text at 72 columns, explain what and why, and describe the
 failure mode for a fix. A new component and its tests belong together.
 
-Sign off each contribution with `git commit -s`, certifying the
-[Developer Certificate of Origin 1.1](https://developercertificate.org/).
+Outside contributors sign off each contribution with `git commit -s`, certifying
+the [Developer Certificate of Origin 1.1](https://developercertificate.org/). Maintainer
+commits don't carry a sign-off.
 This records a `Signed-off-by: Your Name <your-email>` trailer; it is not a
 cryptographic signature or a transfer of copyright. The sign-off means you have
 the right to submit the contribution under the project's MIT license and accept

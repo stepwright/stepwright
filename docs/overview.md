@@ -31,7 +31,10 @@ not to use C++20 coroutines.
 
 1. **Zero allocation on hot paths.** No heap allocation per step, per child
    wait, per park/wake, per deferral, or per primitive wait (waiter nodes are
-   embedded in the waiting object).
+   embedded in the waiting object). Error paths are hot paths too: library
+   control-flow errors (cancellation, timeouts, closes) without a message
+   never allocate, and other errors with short messages reuse per-thread
+   recycled storage, so they are allocation-free in steady state.
 2. **Static dispatch.** Step functions are template arguments
    (member-function pointers); no virtual call or `std::function` per step.
 3. **Stack safety by construction.** Back-to-back steps and synchronously
@@ -99,7 +102,9 @@ work-stealing executors, manual/steady timers, a deterministic virtual executor
 and an opt-in live task registry. It includes runnable examples, reproducible
 benchmarks, design arguments and installable CMake/pkg-config packages. v0.2 adds
 `sync_wait`, `virtual_executor::run`, `sequence`, `retry`, joins over containers
-and reusable operations, which make everyday code shorter.
+and reusable operations, which make everyday code shorter. v0.2.1 makes error
+paths (timeouts, cancellations, failures with short messages) allocation-free in
+steady state.
 
 Possible future directions include a C++20 coroutine adapter, more executor and
 event-loop adapters, Windows support, and vcpkg/Conan packages. These are directions,

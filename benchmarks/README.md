@@ -84,6 +84,9 @@ inside the timed loop. Select them with `BENCH_ARGS="--benchmark_filter=sequence
 | `BM_park_wake_same_thread/1000` | one `wake` + `park` on one thread | The wake is buffered and consumed at the park. |
 | `BM_park_wake_ping_pong_threads` (real) | one wake from another thread and its acknowledgement | Cross-thread round trip, dominated by the cache-line transfer. |
 | `BM_error_propagation_depth/8` | one failure through 8 forwarding machines | Error context added at each level. |
+| `BM_error_code_only` | one `error::make(errc::timed_out)` and its destruction | A library code without a message (shared static payload). |
+| `BM_error_message_context` | one error with a 41-character message, three `add_context` calls and destruction | A recycled payload block. |
+| `BM_error_cross_thread` (real) | one error made on the benchmark thread and released on another | Double-buffered batches of 64; blocks return to the maker through the shared depot. |
 | `BM_baseline_fnptr_chain/1000` | one call through a function pointer | Lower bound for a dynamically dispatched step. |
 | `BM_baseline_std_function_chain/1000` | one call through `std::function` | The callback-chain style stepwright replaces. |
 | `BM_coro_then_chain/1000` | one step of a C++20 coroutine's loop | Coroutine baseline for `BM_then_chain` (below). |
@@ -135,6 +138,7 @@ Caveats, for a fair reading:
 | `BM_when_all_async_manual/1000` | one child completed from a `manual_executor` | |
 | `BM_timer_schedule_cancel_manual`, `_steady` | one schedule + cancel | Pairing heap; the steady service also signals its thread when the entry becomes the earliest. |
 | `BM_with_deadline_inner_first` | one `with_deadline` run whose inner task wins | Includes scheduling and cancelling the timer. |
+| `BM_deadline_timeout` | one `with_deadline` run whose timer wins | `manual_timer_service`; the inner `delay` is cancelled (`errc::cancelled`) and the run completes with `errc::timed_out`. |
 
 ### `bench_streams.cpp`: streams
 

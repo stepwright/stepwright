@@ -7,6 +7,30 @@ versions. Move the Unreleased section to a dated version heading when releasing.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-29
+
+### Changed
+- Error paths no longer allocate in steady state. `error::make` for a library
+  code without a message (`cancelled`, `timed_out`, `closed`, `broken_promise`)
+  returns a shared static payload that never allocates and is copied without
+  reference counting, so deadline timeouts, cancellations and closes are
+  allocation-free. Other payloads with messages up to 144 bytes, and context
+  copy-on-write, reuse 256-byte blocks from per-thread magazines balanced by a
+  bounded shared depot; longer messages allocate as before. Recycling is off
+  under AddressSanitizer. `sizeof(error)` and the public API are unchanged.
+
+### Fixed
+- `stepwright::category()` is never destroyed. It used to be a function-local
+  static destroyed at exit, so comparing or printing an error (including the
+  shared cancellation value) during static destruction called members of a
+  destroyed object (reported by UndefinedBehaviorSanitizer).
+
+### Added
+- Allocation tests for error paths (deadlines, default cancellation, joins,
+  channel close, shared tasks, retry, cross-thread release, thread exit) and
+  error benchmarks (`BM_error_code_only`, `BM_error_message_context`,
+  `BM_error_cross_thread`, `BM_deadline_timeout`).
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

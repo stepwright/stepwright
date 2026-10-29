@@ -74,10 +74,7 @@ select_compiler() {
     esac
 }
 
-GENERATOR_ARGS=()
-if command -v ninja >/dev/null 2>&1; then
-    GENERATOR_ARGS=(-G Ninja)
-fi
+source "${REPO_ROOT}/scripts/cmake_generator.sh"
 
 # configure <variant> <build_type> [cmake args...]  -> sets BUILD_DIR
 configure() {
@@ -90,6 +87,7 @@ configure() {
     fi
     BUILD_DIR="${BUILD_ROOT}/${COMPILER}-${variant}${suffix}"
     select_compiler
+    stepwright_select_generator "${BUILD_DIR}"
     log "configure ${BUILD_DIR} (${build_type}, compiler=${COMPILER})"
     # shellcheck disable=SC2086
     cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" ${GENERATOR_ARGS[@]+"${GENERATOR_ARGS[@]}"} \
@@ -253,6 +251,7 @@ PY
         cmake -E rename "${prefix}" "${relocated}"
         for mode in install fetch subdirectory; do
             log "consumer ${mode} (${COMPILER})"
+            stepwright_select_generator "${BUILD_DIR}/${mode}"
             cmake -S tests/consumer -B "${BUILD_DIR}/${mode}" \
                 ${GENERATOR_ARGS[@]+"${GENERATOR_ARGS[@]}"} \
                 ${COMPILER_ARGS[@]+"${COMPILER_ARGS[@]}"} \

@@ -85,6 +85,100 @@ before releasing the child's share. Acquire/release decrements chain all child
 writes through the shard's last release to final completion. Fixed small joins
 and `when_any` keep their single packed counter. Runs still allocate nothing.
 
+## Error payloads
+
+Timeouts, cancellations and closes are ordinary control flow in services with
+deadlines and fan-outs, so their errors are on hot paths. `error` stays one
+pointer; what changes is where its payload lives. A payload is a 112-byte
+header (reference count, code, message length, eight frames, dropped count,
+frame count and a storage kind) followed by the message bytes. Every observable
+behaviour (`is`, `code`, `message`, `context`, `dropped_context`, `describe`)
+reads the header the same way whatever the kind.
+
+### Immortal payloads
+
+`error::make(code)` without a message, for a stepwright code (`cancelled`,
+`timed_out`, `closed`, `broken_promise`), returns a handle to one of four
+payloads that are never freed. They are built once, on first use, in static
+storage owned by a function-local static that is never destroyed (the
+`cancelled_error()` pattern), so they are usable during static initialisation
+and destruction. Copying or destroying such a handle checks the kind and does
+no reference-count work; moving is a pointer exchange, as before.
+`add_context` always clones an immortal payload (copy-on-write with the
+reference count treated as "shared"), so an immortal payload is never written
+after construction. Code-only errors from other categories (`std::errc`,
+application codes) and every error with a message use blocks.
+
+### Recycled blocks
+
+A payload whose message fits uses one fixed 256-byte block: 144 bytes of
+message capacity on 64-bit targets after the header. 256 bytes covers
+formatted diagnostics such as a host, port and reason, is a common allocator
+size class, and keeps the worst-case cache memory small: two cache units per
+block, 16 KiB per thread and 1 MiB in the depot. Longer messages take one
+exact allocation from the global `operator new`, as before, and return it with
+`operator delete`; the kind records which.
+
+Blocks are recycled with per-thread magazines and a global depot (Bonwick and
+Adams, see [provenance](../provenance.md)):
+
+- Each thread caches up to 64 free blocks in two magazines of 32 (`loaded` and
+  `previous`), as intrusive lists threaded through the free blocks.
+  `allocate` pops from `loaded`, swaps in a non-empty `previous`, then takes a
+  magazine from the depot, and only then asks the global `operator new` for
+  one block.
+  `release` pushes onto the **releasing** thread's `loaded`; when both
+  magazines are full it hands `previous` to the depot. The two magazines give
+  hysteresis: alternating allocate/release at a boundary does not move a
+  magazine each time, and every cache operation is O(1).
+- The depot holds whole magazines under a `std::mutex`, at most 4,096 blocks.
+  A magazine that would exceed the bound is freed. Only list splicing happens
+  under the lock; the global `operator new` and `operator delete` (which a
+  program may replace) run outside it. A relaxed counter lets a thread skip the
+  lock when the depot is empty.
+- Producer/consumer traffic (errors made on a timer or I/O thread, released on
+  a worker) therefore reaches a steady state with no allocation: the consumer's
+  full magazines flow through the depot back to the producer. Each thread's
+  first uses, and depot refills before that steady state is reached, allocate.
+
+Reference counting is unchanged for block and large payloads. An empty `error`
+never reaches any of this code, so the success path gains no work.
+
+### Correctness
+
+- **Ownership.** A block is in exactly one place: a live payload, one thread's
+  magazine, or the depot. The last `release` (acquire/release decrement, as
+  before) destroys the payload before the block is pushed, so no handle can
+  observe it. Blocks cross threads only through the depot mutex, which orders
+  the previous owner's writes before the next owner's.
+- **Lifetime of the thread cache.** The magazines are a constant-initialised,
+  trivially destructible `thread_local`; it has no destructor. A thread that
+  first has to keep blocks (a release, or a depot refill) also constructs a
+  second `thread_local` guard, which registers the thread-exit hook. At thread
+  exit the guard marks the cache dead and hands both magazines to the depot,
+  or frees them when it is full. A thread that only ever allocates without a
+  depot refill keeps no blocks and never registers.
+- **Late releases.** A release or allocation that runs after the guard (from a
+  later-destroyed `thread_local`, or during static destruction after the main
+  thread's thread-local destructors) sees the dead state and calls the global
+  `operator new` or `operator delete` directly; it never touches the magazines
+  again.
+- **Static destruction.** The depot lives in never-destroyed static storage,
+  constructed on first use. It stays reachable from that storage, so
+  LeakSanitizer does not report the blocks it holds, and threads still running
+  during static destruction can keep using it. The `stepwright` error category
+  that every immortal payload refers to is likewise constant-initialised and
+  never destroyed, so `is()`, `code()` and `describe()` stay valid then too.
+- **Bounds.** Free blocks are bounded by 64 per live thread plus 4,096 in the
+  depot; live payloads are bounded by the application.
+- **AddressSanitizer.** When `__SANITIZE_ADDRESS__` or
+  `__has_feature(address_sanitizer)` is set, blocks go straight to the global
+  `operator new` and `operator delete`, so use-after-free of a payload stays
+  detectable. Immortal payloads remain. Class layout does not change, and
+  every block of either mode is a 256-byte allocation from the global
+  `operator new`, so translation units built with and without ASan can still
+  release each other's blocks.
+
 ## Pool hot paths and liveness
 
 The [runtime argument](runtime.md) describes the bounded rings, separate polled
