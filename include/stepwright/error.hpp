@@ -5,7 +5,9 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <new>
 #include <span>
 #include <string>
@@ -13,6 +15,20 @@
 #include <system_error>
 #include <type_traits>
 #include <utility>
+
+// Payload blocks are recycled unless AddressSanitizer is active, where every block
+// goes straight to ::operator new/delete so use-after-free stays detectable. Both
+// modes allocate blocks the same way and never change any class layout.
+#if defined(__SANITIZE_ADDRESS__)
+#define STEPWRIGHT_DETAIL_ERROR_RECYCLING 0
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define STEPWRIGHT_DETAIL_ERROR_RECYCLING 0
+#endif
+#endif
+#ifndef STEPWRIGHT_DETAIL_ERROR_RECYCLING
+#define STEPWRIGHT_DETAIL_ERROR_RECYCLING 1
+#endif
 
 namespace stepwright {
 /// Library error codes; comparable to std::error_code via make_error_code().
@@ -65,29 +81,295 @@ inline std::error_code make_error_code(errc code) noexcept {
     return {static_cast<int>(code), category()};
 }
 
+namespace detail {
+/// Where a payload lives, and so how its last handle releases it.
+enum class error_storage : std::uint8_t {
+    immortal, ///< Static, shared, never freed; no reference counting.
+    block,    ///< A recycled fixed-size block (error_blocks).
+    large     ///< An exact ::operator new allocation for a long message.
+};
+
+/// Failure payload header; the message bytes follow it in the same storage.
+struct error_payload {
+    std::atomic<std::size_t> refs{1};
+    std::error_code code;
+    std::size_t length;
+    std::array<const char*, 8> frames{};
+    std::size_t dropped = 0;
+    std::uint8_t count = 0;
+    error_storage storage;
+
+    error_payload(std::error_code ec, std::size_t size, error_storage kind) noexcept
+        : code(ec)
+        , length(size)
+        , storage(kind) {}
+    char* text() noexcept { return reinterpret_cast<char*>(this + 1); }
+    const char* text() const noexcept { return reinterpret_cast<const char*>(this + 1); }
+};
+
+/// Every recycled payload occupies one block of this size.
+inline constexpr std::size_t error_block_size = 256;
+/// Longest message stored in a block (144 bytes on 64-bit targets).
+inline constexpr std::size_t error_message_capacity = error_block_size - sizeof(error_payload);
+/// Blocks per magazine; a thread caches at most two magazines.
+inline constexpr std::size_t error_magazine_size = 32;
+/// Most free blocks the shared depot keeps; beyond it magazines are freed.
+inline constexpr std::size_t error_depot_limit = 4096;
+/// Whether free blocks are recycled (false under AddressSanitizer).
+inline constexpr bool error_recycling = STEPWRIGHT_DETAIL_ERROR_RECYCLING != 0;
+static_assert(sizeof(error_payload) <= error_block_size / 2);
+
+/// Payload for a message-less library code, or nullptr for an unknown value.
+/// Constructed once in static storage that is never destroyed, so it stays valid
+/// during static initialization and destruction and is never freed or written.
+inline error_payload* immortal_library_payload(errc code) noexcept {
+    constexpr int first = static_cast<int>(errc::cancelled);
+    constexpr int last = static_cast<int>(errc::broken_promise);
+    const int value = static_cast<int>(code);
+    if (value < first || value > last) {
+        return nullptr;
+    }
+    using table = std::array<error_payload, last - first + 1>;
+    alignas(table) static std::array<std::byte, sizeof(table)> storage;
+    // A trivially destructible pointer: no exit-time destructor is registered.
+    static auto* const payloads = ::new (static_cast<void*>(storage.data()))
+        table{error_payload(make_error_code(errc::cancelled), 0, error_storage::immortal),
+              error_payload(make_error_code(errc::timed_out), 0, error_storage::immortal),
+              error_payload(make_error_code(errc::closed), 0, error_storage::immortal),
+              error_payload(make_error_code(errc::broken_promise), 0, error_storage::immortal)};
+    return &(*payloads)[static_cast<std::size_t>(value - first)];
+}
+/// The same for a std::error_code: nullptr unless it holds a stepwright code.
+inline error_payload* immortal_error_payload(std::error_code code) noexcept {
+    return code.category() == category() ? immortal_library_payload(static_cast<errc>(code.value()))
+                                         : nullptr;
+}
+
+/// A free block, linked into a magazine through its own storage.
+struct error_free_block {
+    error_free_block* next;          ///< Next block of the same magazine.
+    error_free_block* next_magazine; ///< In the depot, on a magazine's first block.
+    std::size_t rounds;              ///< In the depot, on a magazine's first block.
+};
+static_assert(sizeof(error_free_block) <= error_block_size);
+
+/// An intrusive list of up to error_magazine_size free blocks.
+struct error_magazine {
+    error_free_block* head = nullptr;
+    std::size_t rounds = 0;
+
+    bool full() const noexcept { return rounds == error_magazine_size; }
+    void push(void* block) noexcept {
+        head = ::new (block) error_free_block{.next = head, .next_magazine = nullptr, .rounds = 0};
+        ++rounds;
+    }
+    void* pop() noexcept {
+        error_free_block* block = head;
+        head = block->next;
+        --rounds;
+        return block;
+    }
+    void free_all() noexcept {
+        while (head) {
+            error_free_block* next = head->next;
+            ::operator delete(head);
+            head = next;
+        }
+        rounds = 0;
+    }
+};
+
+/// Process-wide store of full (or, after thread exit, partial) magazines that
+/// balances blocks between threads. Never destroyed and always reachable from its
+/// static storage. Only list splicing happens under the lock: no allocation,
+/// deallocation or other user code.
+class error_block_depot {
+public:
+    error_block_depot(const error_block_depot&) = delete;
+    error_block_depot& operator=(const error_block_depot&) = delete;
+    ~error_block_depot() = delete;
+
+    static error_block_depot& instance() noexcept {
+        alignas(error_block_depot) static std::array<std::byte, sizeof(error_block_depot)> storage;
+        // A trivially destructible pointer: no exit-time destructor is registered.
+        static auto* const depot = ::new (static_cast<void*>(storage.data())) error_block_depot();
+        return *depot;
+    }
+    /// A racy hint: false means a take() would very likely find nothing.
+    bool stocked() const noexcept { return blocks_hint_.load(std::memory_order_relaxed) != 0; }
+    /// Move one magazine into the empty out; false if the depot is empty.
+    bool take(error_magazine& out) noexcept {
+        const std::lock_guard lock(lock_);
+        error_free_block* first = magazines_;
+        if (!first) {
+            return false;
+        }
+        magazines_ = first->next_magazine;
+        blocks_ -= first->rounds;
+        blocks_hint_.store(blocks_, std::memory_order_relaxed);
+        out.head = first;
+        out.rounds = first->rounds;
+        return true;
+    }
+    /// Store the non-empty in and leave it empty; false (in unchanged) if full.
+    bool put(error_magazine& in) noexcept {
+        {
+            const std::lock_guard lock(lock_);
+            if (blocks_ + in.rounds > error_depot_limit) {
+                return false;
+            }
+            in.head->next_magazine = magazines_;
+            in.head->rounds = in.rounds;
+            magazines_ = in.head;
+            blocks_ += in.rounds;
+            blocks_hint_.store(blocks_, std::memory_order_relaxed);
+        }
+        in = {};
+        return true;
+    }
+    /// Free blocks currently stored (a snapshot, for tests and diagnostics).
+    std::size_t size() const noexcept { return blocks_hint_.load(std::memory_order_relaxed); }
+
+private:
+    error_block_depot() noexcept = default;
+
+    std::mutex lock_;
+    error_free_block* magazines_ = nullptr;
+    std::size_t blocks_ = 0;
+    std::atomic<std::size_t> blocks_hint_{0};
+};
+
+/// Per-thread magazines. Constant-initialized and trivially destructible: thread
+/// exit is handled by error_cache_guard, registered only once the thread keeps
+/// blocks. `previous` is always empty or full; `loaded` may be partial.
+struct error_block_cache {
+    static constexpr std::uint8_t fresh = 0; ///< Holds no blocks; no exit hook yet.
+    static constexpr std::uint8_t live = 1;  ///< Exit hook registered.
+    static constexpr std::uint8_t dead = 2;  ///< Exit hook ran; never cache again.
+
+    error_magazine loaded;
+    error_magazine previous;
+    std::uint8_t state = fresh;
+};
+
+/// Fixed-size payload block allocator: per-thread magazines over a shared depot
+/// (Bonwick and Adams' magazine design). Steady-state allocate/release, including
+/// allocation on one thread and release on another, performs no heap allocation.
+class error_blocks {
+public:
+    /// One error_block_size block; may throw std::bad_alloc.
+    [[gnu::returns_nonnull]] static void* allocate() {
+        if constexpr (!error_recycling) {
+            return ::operator new(error_block_size);
+        } else {
+            error_block_cache& cache = local();
+            if (cache.loaded.rounds == 0) {
+                if (cache.previous.rounds != 0) {
+                    std::swap(cache.loaded, cache.previous);
+                } else if (!refill(cache)) {
+                    return ::operator new(error_block_size);
+                }
+            }
+            return cache.loaded.pop();
+        }
+    }
+    /// Return a block from allocate() (from any thread) to this thread's cache.
+    static void release(void* block) noexcept {
+        if constexpr (!error_recycling) {
+            ::operator delete(block);
+        } else {
+            error_block_cache& cache = local();
+            if (cache.state != error_block_cache::live) {
+                if (cache.state == error_block_cache::dead) {
+                    // Thread exit or static destruction already flushed the cache.
+                    ::operator delete(block);
+                    return;
+                }
+                enlist(cache);
+            }
+            if (cache.loaded.full()) {
+                if (cache.previous.rounds != 0) {
+                    spill(cache.previous);
+                }
+                cache.previous = std::exchange(cache.loaded, {});
+            }
+            cache.loaded.push(block);
+        }
+    }
+    /// This thread's magazines (tests and diagnostics).
+    static error_block_cache& local() noexcept {
+        static thread_local error_block_cache cache;
+        return cache;
+    }
+
+private:
+    friend class error_cache_guard;
+
+    // Hand a non-empty magazine to the depot, or free it outside the depot lock.
+    static void spill(error_magazine& magazine) noexcept {
+        if (!error_block_depot::instance().put(magazine)) {
+            magazine.free_all();
+        }
+    }
+    // Load an empty cache from the depot; false if there is nothing to take.
+    static bool refill(error_block_cache& cache) noexcept {
+        if (cache.state == error_block_cache::dead) {
+            return false;
+        }
+        error_block_depot& depot = error_block_depot::instance();
+        if (!depot.stocked()) {
+            return false;
+        }
+        if (cache.state == error_block_cache::fresh) {
+            enlist(cache);
+        }
+        return depot.take(cache.loaded);
+    }
+    static void enlist(error_block_cache& cache) noexcept;
+};
+
+/// Thread-exit hook for error_block_cache: marks it dead, then moves its blocks to
+/// the depot (or frees them). Later releases on this thread bypass the cache.
+class error_cache_guard {
+public:
+    explicit error_cache_guard(error_block_cache& cache) noexcept : cache_(&cache) {}
+    error_cache_guard(const error_cache_guard&) = delete;
+    error_cache_guard& operator=(const error_cache_guard&) = delete;
+    ~error_cache_guard() {
+        cache_->state = error_block_cache::dead;
+        for (error_magazine* magazine : {&cache_->loaded, &cache_->previous}) {
+            if (magazine->rounds != 0) {
+                error_blocks::spill(*magazine);
+            }
+        }
+    }
+
+private:
+    error_block_cache* cache_;
+};
+
+inline void error_blocks::enlist(error_block_cache& cache) noexcept {
+    // Constructed on this thread's first call; its destructor runs at thread exit.
+    static thread_local const error_cache_guard guard(cache);
+    cache.state = error_block_cache::live;
+}
+} // namespace detail
+
 /// Cheap, copyable error value. Distinct handles are safe on different threads;
 /// serialize mutation/move/destruction of the same handle. Context is copy-on-write
 /// so changing one handle never mutates another handle's observable payload.
+/// Message-less library codes share static payloads without reference counting;
+/// other payloads use recycled blocks unless their message is long.
 class error {
-    struct payload {
-        std::atomic<std::size_t> refs{1};
-        std::error_code code;
-        std::size_t length;
-        std::array<const char*, 8> frames{};
-        std::size_t count = 0;
-        std::size_t dropped = 0;
-
-        payload(std::error_code ec, std::size_t size) : code(ec), length(size) {}
-        char* text() noexcept { return reinterpret_cast<char*>(this + 1); }
-        const char* text() const noexcept { return reinterpret_cast<const char*>(this + 1); }
-    };
+    using payload = detail::error_payload;
+    using storage = detail::error_storage;
 
 public:
     /// Empty success handle; construction/copy/move of empty handles uses no atomics.
     error() noexcept = default;
     /// Retain the payload (if any); other may be read concurrently, not changed.
     error(const error& other) noexcept : data_(other.data_) {
-        if (data_) {
+        if (data_ && data_->storage != storage::immortal) {
             data_->refs.fetch_add(1, std::memory_order_relaxed);
         }
     }
@@ -114,12 +396,19 @@ public:
         }
     }
 
-    /// Own a copy of code/message in one allocation (zero code means success).
+    /// Own a copy of code/message (zero code means success). A library code without
+    /// a message shares a static payload and never allocates; other payloads use a
+    /// recycled block, or one allocation for a message longer than the block holds.
     /// May throw on allocation failure; independent calls are thread-safe.
     static error make(std::error_code code, std::string_view message = {}) {
         error result;
         if (code) {
-            result.data_ = allocate(code, message);
+            if (message.empty()) {
+                result.data_ = detail::immortal_error_payload(code);
+            }
+            if (!result.data_) {
+                result.data_ = allocate(code, message);
+            }
         }
         return result;
     }
@@ -145,21 +434,26 @@ public:
     /// Keep eight frames, count later drops; empty is a no-op. Exclusive access
     /// to this handle is required; distinct handles may add context concurrently.
     void add_context(const char* where) {
-        if (!data_) {
+        payload* current = data_;
+        if (!current) {
             return;
         }
-        if (data_->refs.load(std::memory_order_acquire) != 1) {
+        if (current->storage == storage::immortal ||
+            current->refs.load(std::memory_order_acquire) != 1) {
+            payload* clone =
+                allocate(current->code, std::string_view(current->text(), current->length));
+            clone->frames = current->frames;
+            clone->count = current->count;
+            clone->dropped = current->dropped;
             error copy;
-            copy.data_ = allocate(data_->code, message());
-            copy.data_->frames = data_->frames;
-            copy.data_->count = data_->count;
-            copy.data_->dropped = data_->dropped;
-            swap(copy);
+            copy.data_ = clone;
+            swap(copy); // copy now releases this handle's share of the original
+            current = clone;
         }
-        if (data_->count < data_->frames.size()) {
-            data_->frames[data_->count++] = where;
+        if (current->count < current->frames.size()) {
+            current->frames[current->count++] = where;
         } else {
-            ++data_->dropped;
+            ++current->dropped;
         }
     }
     /// Borrow kept frame pointers; valid while this payload remains unchanged.
@@ -196,17 +490,30 @@ public:
 
 private:
     static payload* allocate(std::error_code code, std::string_view message) {
-        void* storage = ::operator new(sizeof(payload) + message.size());
-        auto* data = new (storage) payload(code, message.size());
+        const bool fits = message.size() <= detail::error_message_capacity;
+        void* block = fits ? detail::error_blocks::allocate()
+                           : ::operator new(sizeof(payload) + message.size());
+        auto* data =
+            ::new (block) payload(code, message.size(), fits ? storage::block : storage::large);
         if (!message.empty()) {
             std::memcpy(data->text(), message.data(), message.size());
         }
         return data;
     }
-    void release() noexcept {
-        if (data_->refs.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-            data_->~payload();
-            ::operator delete(data_);
+    void release() noexcept { release_payload(data_); }
+    // Out of line: only the null check is inlined into every destruction site,
+    // and the static immortal payloads (never freed) stay out of the optimizer's
+    // view of the free path.
+    [[gnu::noinline]] static void release_payload(payload* data) noexcept {
+        const storage kind = data->storage;
+        if (kind == storage::immortal || data->refs.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+            return;
+        }
+        data->~payload();
+        if (kind == storage::block) {
+            detail::error_blocks::release(data);
+        } else {
+            ::operator delete(data);
         }
     }
     payload* data_ = nullptr;
