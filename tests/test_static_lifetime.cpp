@@ -10,6 +10,11 @@
 // then checks every copy. Freed memory is scribbled by the replacement operator
 // delete below, so a use after free is detected deterministically even without
 // AddressSanitizer (which reports it on its own).
+//
+// The same applies to stepwright::category(): it used to be a function-local
+// static, destroyed at exit, so comparing or printing such an error during static
+// destruction called members of a destroyed category (reported by UBSan's vptr
+// check, which the sanitizer builds enable).
 #include <stepwright/detail/wait_core.hpp>
 
 #include <gtest/gtest.h>
@@ -91,7 +96,10 @@ std::atomic<long> copies{0};
 std::atomic<bool> corrupted{false};
 
 bool intact(const stepwright::error& e) noexcept {
-    return e.is(stepwright::errc::cancelled) && e.message().empty() && e.context().empty();
+    // Member calls on the category; UBSan's vptr check reports them if the
+    // category has been destroyed.
+    return e.is(stepwright::errc::cancelled) && e.message().empty() && e.context().empty() &&
+           std::strcmp(e.code().category().name(), "stepwright") == 0;
 }
 
 void copy_until_stopped() noexcept {

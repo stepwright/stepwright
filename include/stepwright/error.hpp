@@ -42,12 +42,23 @@ public:
         return "unknown stepwright error";
     }
 };
+
+// Constant-initialized storage whose destructor never destroys the category.
+union immortal_error_category {
+    error_category value;
+    constexpr immortal_error_category() noexcept : value() {}
+    immortal_error_category(const immortal_error_category&) = delete;
+    immortal_error_category& operator=(const immortal_error_category&) = delete;
+    // NOLINTNEXTLINE(modernize-use-equals-default): must not destroy the member.
+    ~immortal_error_category() {}
+};
+inline constinit const immortal_error_category error_category_instance{};
 } // namespace detail
 
 /// Thread-safe process-lifetime category named "stepwright"; no per-call allocation.
+/// Never destroyed, so errors stay comparable and printable during static destruction.
 inline const std::error_category& category() noexcept {
-    static const detail::error_category instance;
-    return instance;
+    return detail::error_category_instance.value;
 }
 /// Convert a library code to a value; thread-safe, no allocation.
 inline std::error_code make_error_code(errc code) noexcept {
